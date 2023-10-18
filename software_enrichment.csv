@@ -1,0 +1,245 @@
+Software_Name,Software_ID,type,"free","source","license"
+SPSS,43381,Stat,0,0,na
+Prism,43387,Stat,0,0,na
+ImageJ,43391,Im,1,1,"BSD2"
+R,49992,Stat,1,1,"GPL2"
+SAS,44309,Stat,0,0,na
+Windows,43700,Op,0,0,na
+BLAST,45297,Bio,1,1,"public domain"
+Excel,43377,Stat,0,0,na
+MATLAB,43405,Stat,0,0,na
+Stata,43396,Stat,0,0,na
+MEGA,43361,Bio,1,1,"Mega Limited Code Review Licence"
+ClustalW,44112,Bio,1,1,LGPL
+Photoshop,43595,Im,0,0,na
+FlowJo,43408,Bio,0,0,na
+TargetScan,43560,Bio,1,1,"MIT"
+CellQuest,45237,Bio,0,0,na
+Image - Pro Plus,45753,Im,0,0,na
+Quantity One,43910,Im,0,0,na
+Primer,43406,Stat,1,1,"GPL2"
+BLASTN,44005,Bio,1,1,"public domain"
+Statistica,45009,Stat,0,0,na
+BLASTP,44404,Bio,1,1,"public domain"
+SigmaPlot,43708,Stat,0,0,na
+DAVID,48747,Bio,1,0,na
+JMP,43496,Stat,0,0,na
+Bioconductor,44018,Bio,1,1,"Artistic License 2.0"
+Python,43464,Stat,1,1,"Python Software Foundation License"
+Metamorph,43354,Im,0,0,na
+Mascot,43865,Bio,0,0,na
+Cytoscape,43914,na,1,1,"LGPL21"
+MrBayes,46144,Bio,1,1,"GPL3"
+PyMOL,43811,Bio,0,0,na
+Bowtie,43368,Bio,1,1,"Artistic License 2.0"
+Ingenuity Pathway Analysis,44597,na,0,0,na
+StatView,43394,Stat,0,0,na
+limma,43771,Stat,1,1,"LGPL"
+BioEdit,44181,Bio,1,0,na
+AxioVision,43524,Im,0,0,na
+ImageQuant,43987,Im,0,0,na
+MUSCLE,43588,Bio,1,1,"public domain"
+Origin,43586,Stat,0,0,na
+miRanda,43455,Bio,1,1,GPL2
+Primer Express,43388,na,0,0,na
+Java,43431,Prog,1,1,"GPL2"
+Perl,44141,Prog,1,1,GPL
+SMART,43576,na,1,0,na
+SigmaStat,43429,Stat,0,0,na
+SPM,44213,Stat,1,1,"GPL2"
+PLINK,43542,Bio,1,1,"GPL3"
+PhyML,43527,na,1,1,"GPL3"
+NIS - Elements,43389,Im,0,0,na
+SAMtools,45425,na,1,1,MIT
+Geneious,43358,na,0,0,na
+GeneSpring,43795,Bio,0,0,na
+Mac,43695,na,0,0,na
+Image Lab,44342,Im,0,0,na
+MAFFT,44009,na,1,1,"BSD3"
+TopHat,43715,Bio,1,1,BSL1
+SHELXL,43584,Chem,1,0,na
+ArcGIS,43599,na,0,0,na
+Linux,43843,Op,1,1,GPL2
+Fiji,43679,Im,1,1,GPL3
+PAUP *,44493,na,1,0,na
+COOT,43895,na,1,1,GPL3
+LabVIEW,43372,na,0,0,na
+Scion Image,43514,bio,1,0,na
+RAxML,44460,na,1,1,"GPL"
+ZEN,43559,Im,0,0,na
+InStat,43683,Stat,0,0,na
+BWA,44887,na,1,1,GPL3
+MedCalc,44002,na,0,0,na
+FACSDiva,43393,na,0,0,na
+Clustal X,43531,na,1,1,LGPL
+SHELXS,43583,na,1,0,na
+Arlequin,44971,Bio,1,0,na
+Minitab,43744,Stat,0,0,na
+SignalP,43589,na,1,0,na
+Modeltest,44494,na,1,1,GPL3
+lme 4,43561,Stat,1,1,"GPL2"
+ModFit,43505,Bio,0,0,na
+NVivo,45313,na,0,0,na
+PolyPhen,44974,na,0,1,na
+SDS,43730,na,0,0,na
+SHELXTL,43585,na,1,0,na
+FastQC,43915,na,1,1,GPL3
+Epi Info,44847,na,1,1,"Apache2"
+SAINT,44147,na,1,0,na
+CLC Genomics Workbench,43913,na,0,0,na
+Review Manager,43697,na,0,0,na
+STRUCTURE,44234,na,1,1,"missing"
+TreeView,43907,na,1,1,GPL
+C + +,43400,na,1,1,na
+Feature Extraction,43794,na,0,0,na
+Imaris,43896,Im,0,0,na
+edgeR,45491,na,1,1,GPL
+Haploview,43543,Bio,1,1,"MIT"
+Sequencher,45871,Bio,0,0,na
+Blast2GO,46799,na,1,0,na
+Gaussian,45023,Chem,0,0,na
+tblastn,45848,na,1,1,"public domain"
+Tracer,44011,na,1,1,"LGPL"
+GeneMapper,45754,na,0,0,na
+DnaSP,44012,bio,1,1,na
+REFMAC,43375,bio,1,1,na
+Chimera,43786,chem,1,1,custom
+Cluster,43717,na,1,1,custom
+RevMan,43437,na,1,0,na
+BEAST,44013,na,1,1,LGPL21
+HMMER,43956,na,1,1,BSD
+pClamp,44169,na,0,0,
+PicTar,43581,bio,1,0,na
+miRDB,43767,na,1,0,na
+STRING,43416,na,1,0,na
+C,43445,na,1,1,na
+Cufflinks,43665,na,1,1,Boost
+MAS,45171,na,0,0,na
+SIFT,44830,na,1,0,na
+Trimmomatic,43643,na,1,1,na
+Igor Pro,52099,na,0,0,na
+LightCycler,43830,na,0,0,na
+SWISS - MODEL,45354,na,1,0,na
+Primer - BLAST,44050,na,1,1,GPL2
+Primer Premier,55012,na,0,0,na
+Illustrator,45053,na,1,1,na
+GenePix Pro,43990,na,0,0,na
+MODELLER,43721,na,1,0,na
+QIIME,45494,na,1,1,GPL2
+Trinity,44271,na,1,1,BSD3
+ANSYS,43797,na,0,0,na
+Pfam,44034,na,0,0,na
+Volocity,43605,na,0,0,na
+AutoDock,43723,na,1,1,GPL
+GeneScan,45262,na,0,0,na
+InterProScan,43955,na,1,1,Apache2
+CCP,43893,na,1,0,na
+DESeq,43716,na,1,1,LGPL
+miRBase,43982,na,1,0,na
+PAML,44285,na,1,1,GPL3
+vegan,44618,na,1,1,GPL2
+Access,44419,na,0,0,na
+GATK,45252,na,1,1,Apache2
+ggplot 2,43875,na,1,1,MIT
+Bioanalyzer,43380,na,0,0,na
+FSL,44149,na,1,1,custom
+G * Power,44223,na,1,0,na
+GitHub,43504,na,1,0,na
+RepeatMasker,43369,na,1,1,OSL
+TMHMM,43807,na,1,0,na
+AMBER,45699,na,0,0,na
+CellQuest Pro,49549,na,0,0,na
+Living Image,44629,na,0,0,na
+MEME,44612,na,1,1,custom
+PSI - BLAST,43809,na,1,0,na
+CHARMM,47713,na,0,0,na
+FigTree,43533,na,1,1,na
+PHYLIP,44030,na,1,1,na
+ExPASy,43860,na,1,0,na
+SAM,44860,na,1,1,LGPL
+VMD,44260,na,1,1,custom
+Xcalibur,44100,na,0,0,na
+Comprehensive Meta - Analysis,46801,na,0,0,na
+Gene Expression Omnibus,43834,na,1,0,na
+GROMACS,44841,na,1,1,LGPL21
+mfold,44068,na,1,0,custom
+mothur,44780,na,1,1,GPL3
+ABAQUS,43911,na,0,0,na
+DESeq 2,43645,na,1,1,LGPL
+Mathematica,43698,na,0,0,na
+Proteome Discoverer,44854,na,0,0,na
+RStudio,44573,na,1,1,AGPL
+STAR,43644,na,1,1,GPL3
+Velvet,45085,na,1,1,GPL
+ArrayExpress,44840,na,1,0,na
+BLAT,45069,na,1,1,na
+MySQL,44118,na,1,1,GPL2
+OriginPro,43654,na,0,0,na
+RDP,43535,na,1,1,GPL
+CalcuSyn,43517,na,0,0,na
+FreeSurfer,44148,na,1,1,custom
+FSTAT,44215,na,1,0,na
+GenomeStudio,43510,na,1,0,na
+Mplus,43920,na,0,0,na
+Office Excel,43992,na,0,0,na
+BEDTools,44835,na,1,1,MIT
+geNorm,43649,na,0,0,na
+Amira,45314,na,0,0,na
+CFX Manager,44051,na,0,0,na
+EMBOSS,45454,na,1,1,GPL
+RAST,45440,na,1,0,na
+SYSTAT,43461,na,0,0,na
+GENEPOP,43868,na,1,1,GPL
+Lasergene,46129,na,0,0,na
+starBase,43410,na,1,0,na
+tRNAscan - SE,45442,na,1,1,GPL3
+WinNonlin,44630,na,0,0,na
+ChemStation,44938,na,0,0,na
+Clampfit,44564,na,0,0,na
+PHENIX,43894,na,1,0,na
+PowerLab,43779,na,0,0,na
+Simulink,43902,na,0,0,na
+ape,44476,na,1,1,GPL
+nlme,44620,na,1,1,GPL
+Openlab,44345,na,0,0,na
+SeqMan,43529,na,0,0,na
+SEQUEST,43821,na,0,0,na
+WinMDI,43452,na,1,0,na
+COMSOL,44636,na,0,0,na
+stats,44373,na,1,1,"GPL2"
+BioMart,43882,na,1,1,LGPL
+BioNumerics,45145,na,0,0,na
+CASAVA,44474,na,0,0,na
+GenAlEx,45386,na,1,1,na
+JavaScript,43986,na,1,1,BSD
+MatInspector,44283,na,1,0,na
+MaxQuant,44674,na,1,0,na
+Network,45578,na,1,0,custom
+Oligo,44640,na,0,0,na
+PLATON,44601,na,1,1,na
+SPAdes,45769,na,1,1,na
+ArcMap,51158,na,0,0,na
+EpiData,48935,na,1,0,na
+FACS Diva,46880,na,0,0,na
+GenStat,45631,na,0,0,na
+LAS AF,43509,na,1,0,na
+PANTHER,44891,na,1,0,na
+S - Plus,43597,na,0,0,na
+Spike,43727,na,0,0,na
+StepOne,43602,na,0,0,na
+DNASTAR,43530,na,0,0,na
+GIS,43600,na,0,0,na
+MASS,45628,na,1,1,GPL
+Newbler,45083,na,0,0,na
+ORF Finder,44486,na,1,1,MIT
+pheatmap,43793,na,1,1,GPL2
+Picard,45732,na,1,1,MIT
+SNAP,44047,na,1,0,na
+CNS,43933,na,1,0,na
+Jalview,46322,na,1,1,GPL
+Multi Gauge,43481,na,0,0,na
+Phyre,43808,na,1,0,na
+PROCHECK,43810,na,1,1,na
+BIAevaluation,44578,na,0,0,na
+dbSNP,45254,na,1,0,na
+Ethovision,44332,na,0,0,na

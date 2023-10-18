@@ -1,0 +1,276 @@
+---
+title: "Coarsend Exact Matching"
+author: "David Schindler"
+format: html
+editor: visual
+execute: 
+  warning: false
+bibliography: references.bib
+---
+
+# Coarsened Exact Matching
+
+Goal of this work is to analyse software usage and citation differences in retracted articles. Therefore, we create an evenly distributed sample data set to compare to the [Retraction Watch](https://retractionwatch.com/) (RW) data on article retraction by selecting 10 representative sample articles for every article listed in RW.
+
+This is implemented with Coarsened Exact Matching (CEM) [@iacus2012causal] controlling 3 article attributes that have a proven influence on software usage and citation habits [@schindler2022role]:
+
+1.  **Publication date**: coarsened to *year.* The general observed trend is that software usage increases over time.
+
+2.  **Scientific domain**: matched *exactly*. Specific domains were observed to exhibit higher/lower software usage/citation quality. Domain order for multidisciplinary work is retained: \[Computer Science, Biology\] is different from \[Biology, Computer Science\]
+
+3.  **Journal Rank:** coarsened to *percentiles*. Higher journal rank has been associated with more formal software citation attributed to more thorough journal policies. (Interestingly, prior work has suggested that article retractions are more likely in higher impact journals.)
+
+We consider articles published between 2000 and 2019.
+
+```{r}
+library(tidyverse)
+```
+
+## Data Loading
+
+In the first step we calculate the data distribution in the given samples. Therefore, we first need to read in all relevant information.
+
+### Journal Rank Info from Scimago
+
+[Scimago](https://www.scimagojr.com/) offers publicly available information on journal rank on a yearly basis which we can use to control the journal rank in our matching. The rank information was manually downloaded from the website for all considered years. Journals are matched by name between RW and Scimago, which is why we perform a restrictive pre-processing to maximize the overlap.
+
+```{r}
+filenames <- list.files(path='data', pattern='scimagojr 20..\\.csv', full.names = TRUE)
+lapply(filenames, function(fn){
+  df <- read_delim(fn, delim=';')
+  df$year <- as.integer(str_split(str_split(fn, ' ')[[1]][-1], '\\.')[[1]][1])
+  df
+}) %>%
+  bind_rows() %>%
+  mutate(Title=tolower(Title)) %>%
+  mutate(Title=gsub(' :', ':', Title)) %>%
+  mutate(Title=gsub('( \\(.{2,5}\\))', '', Title)) %>%
+  mutate(Title=gsub('(: .{2,5}$)', '', Title)) %>%
+  mutate(Title=gsub('^the ', '', Title)) %>%
+  mutate(Title=gsub('&', 'and', Title)) %>%
+  mutate(Title=gsub(':$', '', Title)) %>%
+  dplyr::select(Title, Rank, SJR, year) %>%
+  group_by(year) %>%
+  mutate(percentile = ntile(Rank, 100)) %>%
+  dplyr::select(Title, year, percentile) %>%
+  ungroup() %>%
+  distinct() -> scimago_link_df
+```
+
+We perform a cleaning of Scimago data because there are duplicate journal names, due to duplicate names assigned different publishers, but also for cases for which no publisher name is provided (a small number of duplicates is also introduced during pre-processing \< 10%). We ignore duplicate journals as they vary in journal rank percentile and could introduce errors in our data. The overall number of duplicates is low and only affects a small fraction of the data.
+
+```{r}
+scimago_link_df %>%
+  group_by(Title, year) %>%
+  summarize(n=n(), .groups="drop") %>%
+  filter(n > 1) %>%
+  select(Title, year) %>%
+  mutate(duplicate = TRUE) -> duplicate_journal_names_df 
+
+scimago_link_df %<>%
+  left_join(duplicate_journal_names_df, by=c("Title", "year")) %>%
+  mutate(duplicate=ifelse(is.na(duplicate), FALSE, TRUE)) %>%
+  filter(!duplicate) %>%
+  select(Title, year, percentile)
+```
+
+### S2ORC Article Metadata
+
+The used full text data is sampled from [S2ORC](https://github.com/allenai/s2orc/) [@lo-etal-2020-s2orc], which is currently the biggest source of available scientific publications in plain text format. Here we load a dataframe that contains all available metadata for publications that have a plain text full text in S2ORC which we generated in the previous Python script. We draw the control samples from the resulting set.
+
+```{r}
+meta_df <- read_csv('all_metadata.csv') %>%
+  filter(between(year, 2000, 2019)) %>%
+  rename(journal=journal_prepro) 
+```
+
+### RW Article Retractions
+
+The file loaded here was provided to us by RW and contains all information RW has gathered on articles retractions as of January 6th, 2022. Here, we perform full text analyses and can, therefore, only include articles for which a plain text full text is available. This excludes a large number of articles but the remaining sample size is still sufficient to perform a large scale analysis as shown by prior studies investigation article retractions, facing similar issues and working on comparable sample sizes [@peng2022dynamics].
+
+```{r}
+rw_df <- read_csv('RWDBDNLD01052022.csv') %>%
+  filter(!is.na(OriginalPaperDOI)) %>%
+  separate_rows(Reason, sep=';', convert = T) %>%
+  mutate(Reason=str_remove(Reason, ";")) %>%
+  mutate(Reason=str_remove(Reason, "\\+")) %>%
+  filter(Reason!='') %>%
+  mutate(Journal=tolower(Journal)) %>%
+  mutate(Journal=gsub(' :', ':', Journal)) %>%
+  mutate(Journal=gsub('( \\(.{2,5}\\))', '', Journal)) %>%
+  mutate(Journal=gsub('(: .{2,5}$)', '', Journal)) %>%
+  mutate(Journal=gsub('^the ', '', Journal)) %>%
+  mutate(Journal=gsub('&', 'and', Journal)) %>%
+  mutate(Journal=gsub(':$', '', Journal)) 
+```
+
+### Getting RW Samples with Available Information
+
+We filter and only consider RW articles with an available full text. (We already performed a software extraction for those texts at this point but ignore the corresponding information for now.)
+
+```{r}
+soft_df <- read_csv('data/software.csv', na = 'na') %>% 
+  mutate(set_id = factor(set_id)) %>%
+  filter(set_id == 'retracted') %>%
+  inner_join(meta_df, by="paper_id") %>%
+  mutate(journal=tolower(journal)) %>%
+  mutate(journal=gsub(' :', ':', journal)) %>%
+  mutate(journal=gsub('( \\(.{2,5}\\))', '', journal)) %>%
+  mutate(journal=gsub('(: .{2,5}$)', '', journal)) %>%
+  mutate(journal=gsub('^the ', '', journal)) %>%
+  mutate(journal=gsub('&', 'and', journal)) %>%
+  mutate(journal=gsub(':$', '', journal)) %>%
+  inner_join(rw_df, by = c('doi'='OriginalPaperDOI')) %>%
+  filter(between(year, 2000, 2019))
+```
+
+## Matching
+
+Now we find suited matches for each individual article. First, we analyze the distribution of articles in the retraction watch data based on the variables we are controlling:
+
+```{r}
+soft_df %>%
+  dplyr::select(paper_id, mag_field_of_study, journal, Journal, year) %>%
+  distinct() %>%
+  mutate(year=as.integer(year)) %>%
+  left_join(scimago_link_df, by=c('Journal'='Title', 'year'='year')) %>%
+  filter(!is.na(percentile)) -> out_df_1
+
+soft_df %>%
+  dplyr::select(paper_id, mag_field_of_study, journal, Journal, year) %>%
+  distinct() %>%
+  mutate(year=as.integer(year)) %>%
+  left_join(scimago_link_df, by=c('Journal'='Title', 'year'='year')) %>%
+  filter(is.na(percentile)) %>%
+  dplyr::select(-percentile) %>%
+  left_join(scimago_link_df, by=c('journal'='Title', 'year'='year')) %>%
+  filter(!is.na(percentile)) -> out_df_2
+
+out_df <- bind_rows(out_df_1, out_df_2) %>%
+  dplyr::select(paper_id, mag_field_of_study, year, percentile) 
+```
+
+Then, we get suited samples from S2ORC data and remember which RW samples could not be matched. We select 10 samples for each article and ignore the articles for which we do not have a sufficient sample number available.
+
+```{r}
+meta_df %>%
+  inner_join(scimago_link_df, by=c('journal'='Title', 'year'='year')) %>%
+  filter(! paper_id %in% soft_df$paper_id) -> filtered_meta_df
+
+set.seed(42)
+unmatched_ids <- c()
+matched_ids <- c()
+covered_samples <- c()
+mapping <- list()
+for (i in 1:nrow(out_df)) {
+  if (i %% 30 == 0) {
+    print(i)
+    print(paste0(i, ': ', ', ', length(matched_ids), ', ', length(unmatched_ids)))
+  }
+  filtered_meta_df %>%
+    filter(year==out_df[i,]$year & percentile==out_df[i,]$percentile & mag_field_of_study==out_df[i,]$mag_field_of_study) %>%
+    filter(! paper_id %in% covered_samples) -> tmp_df 
+  if (nrow(tmp_df) >= 10){
+    matched_ids <- c(matched_ids, out_df[i,]$paper_id)
+    samples <- sample_n(tmp_df, 10)
+    covered_samples <- c(covered_samples, samples$paper_id)
+  } else {
+    unmatched_ids <- c(unmatched_ids, out_df[i,]$paper_id)
+  }
+}
+```
+
+## Saving Anonymized Data
+
+Now, we have the data on retracted articles and the equally distributed control set. Next, we want to anonymize the data on article retraction and bring it in a suited output format so that we can publish it as an intermediate processing state from which the statistical analyses can be performed. We got permission from Retraction Watch to publish the anonymized data.
+
+We get a list of the retracted papers we are including in the analysis.
+
+```{r}
+out_df %>%
+  filter(paper_id %in% matched_ids) -> 
+  retracted_software_df 
+```
+
+We setup a mapping that covers which control paper belongs to which retracted article.
+
+```{r}
+sample_list_df <- data.frame(covered_samples)
+matched_ids_df <- data.frame(matched_ids)%>% 
+  mutate(idx = row_number())
+
+sample_list_df %>%
+  mutate(source_idx = ((row_number()-1) %/% 10) + 1) %>% 
+  inner_join(matched_ids_df, by=c('source_idx' = 'idx')) %>%
+  select(covered_samples, matched_ids) ->
+  sample_mapping
+```
+
+We load the information on software mentions. This requires an intermediate step in python where the information extraction is run. Here we assume that the information is now available for retracted and control set.
+
+```{r}
+
+soft_df %>%
+  filter(paper_id %in% matched_ids) %>% select(paper_id, doi) %>% distinct() -> rw_software_data_df
+
+all_software_df <- read_csv('data/software.csv', na = 'na') %>% 
+  mutate(set_id = factor(set_id)) 
+```
+
+We load a list of retraction reasons that were manually summarized.
+
+```{r}
+selected_reason <- read_csv("retraction_reasons.csv") %>%
+  dplyr::select(Reason, TopReason)
+```
+
+Now we add back the meta-data for all articles we consider in the analysis and select all data that can be included without hurting the anonymity.
+
+```{r}
+df <- split(all_software_df, all_software_df$set_id)
+
+df$retracted %<>%
+  inner_join(rw_software_data_df, by='paper_id') %>%
+  inner_join(retracted_software_df, by = c('paper_id'='paper_id')) %>% 
+  inner_join(rw_df, by = c('doi'='OriginalPaperDOI')) %>%
+  inner_join(selected_reason, by = c('Reason' = 'Reason')) 
+
+df$`non-retracted` %<>%
+  inner_join(sample_mapping, by = c('paper_id' = 'covered_samples')) %>%
+  inner_join(filtered_meta_df, by='paper_id') 
+
+df %>%
+  bind_rows() %>%
+  mutate(TopReason=ifelse(is.na(TopReason), 'non-retracted', TopReason)) %>%
+  select(set_id, paper_id, name, id, mention_string, software_type, mention_type, developer, version, citation, url, host_id, host_name, year, mag_field_of_study, percentile, matched_ids, TopReason) -> 
+  df
+```
+
+Finally, we perform the replacement of IDs.
+
+```{r}
+set.seed(42)
+df %>% 
+  select(paper_id) %>% distinct() -> ids_to_replace
+replacement_ids <- sample(0:length(ids_to_replace$paper_id), length(ids_to_replace$paper_id), replace = F)
+replacement <- data.frame(ids_to_replace, replacement_ids)
+
+df %>%
+  inner_join(replacement, by='paper_id') %>% 
+  select(set_id, replacement_ids, TopReason, matched_ids, year, mag_field_of_study, percentile, id, name, mention_string, software_type, mention_type, version, developer, citation, url, host_id, host_name) %>%
+  rename(Set_ID=set_id, Paper_ID=replacement_ids, Retraction_Reason=TopReason, Control_Sample_Origin=matched_ids,
+         Year=year, Scientific_Domain=mag_field_of_study, Journal_Rank_Percentile=percentile, 
+         Software_ID=id, Software_Name=name, Software_String=mention_string, 
+         Software_Type=software_type, Mention_Type=mention_type, Version=version, 
+         Developer=developer, Citation=citation, URL=url, Host_Software_ID=host_id, 
+         Host_Software_Name=host_name) %>%
+  left_join(replacement, by=c('Control_Sample_Origin'='paper_id')) %>% 
+  mutate(Control_Sample_Origin = replacement_ids) %>%
+  select(-replacement_ids) -> df_res
+```
+
+And we save the results:
+
+```{r}
+write.csv(df_res, 'software_in_retracted_and_control_articles.csv', row.names = FALSE)
+```

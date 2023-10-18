@@ -1,0 +1,1943 @@
+---
+title: "Supplementary Material: Retracted articles use less free and open source software and cite it worse"
+author: "David Schindler and Frank Krüger"
+format: pdf
+toc: false
+code-line-numbers: true
+editor: visual
+execute: 
+  warning: false
+bibliography: references.bib
+suppress-bibliography: true
+---
+
+# Software Usage and Citation in Retracted Articles
+
+This document is created as a literate data analysis where we provide descriptions, implemented code, and the results in one publication. It summarizes all data analyses concerning the scientific software landscape and software citation habits in retracted articles.
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+library(effectsize)
+
+theme_set(theme_bw() +   
+            theme(legend.position = 'top', 
+                  strip.background = element_rect(fill="#E5E5E5"), 
+                  plot.margin = unit(c(0,2,0,0), 'mm'),
+                  legend.margin=margin(0,0,0,0),
+                  legend.box.margin=margin(0,0,-5,0),
+                  plot.caption.position = "plot",
+                  plot.caption = element_text(hjust = 0),
+                  plot.tag.position = "bottomleft")
+)
+```
+
+## Loading Data
+
+We load anonymized information on software in retracted and control articles. This includes identified software and additional information such as version, developer, and software type. The information was aggregated by information extraction from full-text articles. Control articles were selected by Coarsened Exact Matching. The published data which is loaded here is based on data provided by Retraction Watch and published with their permission. The original data is available from Retraction Watch. Below we describe all information sources used to create the data.
+
+```{r}
+df <- read_csv("software_in_retracted_and_control_articles.csv")
+```
+
+### RW Article Retractions
+
+We obtained the RW database on article retractions as of January 6th, 2022. We use information on retraction, the reason for retraction, journal, and DOI. We perform full-text analyses of these articles and can, therefore, only include articles for which plain full-text is available. This excludes a large number of articles, but the remaining sample size is still sufficient to perform a large-scale analysis, as shown by prior studies investigating article retractions, facing similar issues, and working on comparable sample sizes [@peng2022dynamics].
+
+### S2ORC
+
+The full-text data is sampled from [S2ORC](https://github.com/allenai/s2orc/) [@lo-etal-2020-s2orc], currently the largest source of available scientific publications in plain text format. The information on software contained in articles is extracted from these full-texts. Further, metadata on scientific domain, year, and journal from S2ORC was utilized.
+
+### Summarized Retraction Reasons
+
+There are several retraction reasons considered by Retraction Watch. An overview is available at [reasons](https://retractionwatch.com/retraction-watch-database-user-guide/retraction-watch-database-user-guide-appendix-b-reasons/). However, these are too fine-grained to allow meaningful analyses of the given data set. Therefore, following prior work [@ribeiro2018retractions], we manually summarized reasons into broader categories. The top-level reasons we consider are:
+
+1.  Error: Honest errors in investigations that can occur due to multiple reasons.
+2.  Investigation: Investigations into publications performed by different parties, for instance, by the publisher or an institution.
+3.  Plagiarism: Cases in which prior work was used without correctly indicating the source
+4.  SelfPlagiarism: Duplication of one's own prior work without indicating the source.
+5.  Misconduct: Cases in which a scientific misconduct was performed by the authors.
+6.  PaperMill: Articles that were automatically generated with paper mill techniques (and are not supported by actual research).
+7.  other: Category that matches all unmatched reasons. There are several unspecific reasons that are not related to others, e.g., "rogue editor".
+
+```{r}
+reasons <- c('Error', 'Investigation', 'Plagiarism', 'SelfPlagiarism', 
+             'Misconduct', 'PaperMill', 'other')
+
+read_csv("retraction_reasons.csv") %>%
+  mutate(TopReason = factor(TopReason, levels = reasons)) -> reasons_print
+split(reasons_print$Reason, reasons_print$TopReason) 
+```
+
+### Control Articles
+
+We select a set of control articles by Coarsened Exact Matching (CEM) [@iacus2012causal]. Three article attributes are controlled that have a proven influence on software usage and citation habits [@schindler2022role]:
+
+1.  **Publication date**: coarsened to *year.* The generally observed trend is that software usage increases over time.
+
+2.  **Scientific domain**: matched *exactly*. Specific domains were observed to exhibit higher/lower software usage/citation quality. Domain order for multidisciplinary work is retained: \[Computer Science, Biology\] is different from \[Biology, Computer Science\]
+
+3.  **Journal Rank:** coarsened to *percentiles*. Higher journal rank has been associated with more formal software citations attributed to more comprehensive journal policies.
+
+Year and domain are determined from Retraction Watch and S2ORC metadata, while the journal rank is based on the Scimago Journal Rank (SJR). [Scimago](https://www.scimagojr.com/) offers publicly available information on journal rank on a yearly basis, which we gathered directly from the Website. The journals information for articles is added by matching Retraction Watch and S2ORC journal information with the Scimago Journal entries.
+
+### Software Information Enrichment
+
+Here, we load manually annotated information on software generated during information enrichment:
+
+1.  software availability: free and commercial
+2.  source code availability: open-source and closed-source
+3.  whether software is statistical software
+
+```{r}
+software_enrichment <- read_csv('software_enrichment.csv', na = 'na') %>%
+  drop_na(free)
+```
+
+```{r}
+n_free <- nrow(filter(software_enrichment, free==1))
+n_free_and_open_source <- nrow(filter(
+  software_enrichment, free==1 & source==1))
+n_free_and_not_open_source <- nrow(filter(
+  software_enrichment, free==1 & source==0))
+n_open <- nrow(filter(software_enrichment, source==1))
+paste0(
+  round(n_free_and_open_source/n_free, digits=2), 
+  "% of free software are also open source, ", 
+  round(n_free_and_not_open_source/n_free, digits=2), 
+  "% are not open source.")
+paste0(
+  round(n_free_and_open_source/n_open, digits=2), 
+  "% of open source software are also free.")
+```
+
+## Data Corrections
+
+We manually correct disambiguation errors that were identified during information enrichment. There are two types of cases: false positive disambiguation, where software names were linked even so they refer to different software, and false negative disambiguation where software names were not linked even so they refer to the same software. Overall, there were 12 false negative cases of software groups and 10 false positive errors of software groups. Groups refer to larger errors where names that appear multiple times are added to other groups that also appear that often. Additionally, there were 14 cases of false negatives where single occurrences were linked to a group, which we consider a small error. All individual errors are corrected here:
+
+```{r}
+df %<>%
+  mutate(Software_ID = ifelse(Software_Name == 'Image J', 
+                     43391, 
+                     Software_ID)) %>% 
+  # false negative matching - big error
+  mutate(Software_Name = ifelse(Software_Name == 'Image J', 
+                       "ImageJ", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("scion", Software_String, 
+                                    ignore.case = TRUE), 
+                     43514, 
+                     Software_ID)) %>% 
+  # false postive linking - big error
+  mutate(Software_Name = ifelse(grepl("scion", Software_String, 
+                                      ignore.case = TRUE), 
+                       "Scion Image", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("^limma$|^limma ", 
+                           Software_String, ignore.case = TRUE), 
+                     43771, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("^limma$|^limma ", 
+                             Software_String, ignore.case = TRUE), 
+                       "limma", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("coot", Software_String, 
+                                    ignore.case = TRUE), 
+                     43895, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("coot", Software_String, 
+                                      ignore.case = TRUE), 
+                       "COOT", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("pasw", Software_String, 
+                                    ignore.case = TRUE), 
+                     43381, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("pasw", Software_String, 
+                                      ignore.case = TRUE), 
+                       "SPSS", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("fastx", Software_String, 
+                                    ignore.case = TRUE), 
+                     46206, 
+                     Software_ID)) %>% 
+  # false positive and false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("fastx", Software_String, 
+                                      ignore.case = TRUE), 
+                       "FASTX - Toolkit", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("tblastn", Software_String, 
+                                    ignore.case = TRUE), 
+                     45848, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("tblastn", Software_String, 
+                                      ignore.case = TRUE), 
+                       "tblastn", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("macintosh", Software_String, 
+                                    ignore.case = TRUE), 
+                     43695, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("macintosh", Software_String, 
+                                      ignore.case = TRUE), 
+                       "Mac", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("Significance Analysis of Microarrays", 
+                           Software_String, ignore.case = TRUE), 
+                     44860, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("Significance Analysis of Microarrays", 
+                             Software_String, ignore.case = TRUE), 
+                       "SAM", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("NetworkX", Software_String,
+                                    ignore.case = TRUE), 
+                     54000, 
+                     Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl("NetworkX", Software_String, 
+                                      ignore.case = TRUE), 
+                       "NetworkX", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("microarray suite", Software_String, 
+                                    ignore.case = TRUE), 
+                     45171, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("microarray suite", 
+                             Software_String, ignore.case = TRUE), 
+                      "MAS", 
+                      Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl("Statistical Parametric Mapping", 
+                           Software_String, ignore.case = TRUE), 
+                     44213, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(grepl("Statistical Parametric Mapping", 
+                             Software_String, ignore.case = TRUE), 
+                       "SPM", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'IPA' | 
+                                Software_String == 'IPA TM', 
+                     44597, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(Software_String == 'IPA' | 
+                                  Software_String == 'IPA TM', 
+                       "Ingenuity Pathway Analysis", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == "Ingenuity" | 
+                       grepl("Ingenuity", Software_String, 
+                             ignore.case = TRUE) & 
+                       (grepl("pathway", Software_String, 
+                              ignore.case = TRUE) | 
+                          grepl("ipa", Software_String, 
+                                ignore.case = TRUE) | 
+                          grepl("system", Software_String, 
+                                ignore.case = TRUE)), 
+                     44597, 
+                     Software_ID)) %>% 
+  # false negative linking - big error
+  mutate(Software_Name = ifelse(Software_String == "Ingenuity" | 
+                         grepl("Ingenuity", Software_String, 
+                               ignore.case = TRUE) & 
+                         (grepl("pathway", Software_String, 
+                                ignore.case = TRUE) | 
+                            grepl("ipa", Software_String, 
+                                  ignore.case = TRUE) | 
+                            grepl("system", Software_String, 
+                                  ignore.case = TRUE)), 
+                       "Ingenuity Pathway Analysis", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^statistics$', Software_String, 
+                                    ignore.case = TRUE), 
+         43381, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^statistics$', Software_String, 
+                                      ignore.case = TRUE), 
+         "SPSS", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^gcos$', Software_String, 
+                                    ignore.case = TRUE), 
+         55013, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^gcos$', Software_String, 
+                                      ignore.case = TRUE), 
+         "GCOS", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^chrome$', Software_String, 
+                                    ignore.case = TRUE), 
+         45207, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^chrome$', Software_String, 
+                                      ignore.case = TRUE), 
+         "Google Chrome", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^primer ?premier$', Software_String, 
+                                    ignore.case = TRUE), 
+         55012, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^primer ?premier$', Software_String, 
+                                      ignore.case = TRUE), 
+         "Primer Premier", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^mr ?modeltest$', Software_String, 
+                                    ignore.case = TRUE), 
+         43157, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^mr ?modeltest$', Software_String, 
+                                      ignore.case = TRUE), 
+         "MrModelTest", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^unix$', Software_String, 
+                                    ignore.case = TRUE), 
+         55010, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('^unix$', Software_String, 
+                                      ignore.case = TRUE), 
+         "UNIX", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('Java ?Tree ?View', Software_String, 
+                                    ignore.case = TRUE), 
+         55008, 
+         Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(grepl('Java ?Tree ?View', Software_String, 
+                                      ignore.case = TRUE), 
+         "Java TreeView", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'MIRA' | 
+                                Software_String == 'Mira', 
+                     55001, 
+                     Software_ID)) %>% 
+  # false positive linking - big error
+  mutate(Software_Name = ifelse(Software_String == 'MIRA' | 
+                                  Software_String == 'Mira', 
+                       "MIRA", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^statistical$', Software_String, 
+                                    ignore.case = TRUE), 
+         43381, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('^statistical$', Software_String, 
+                                      ignore.case = TRUE), 
+         "SPSS", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('m ?- ?plus', Software_String, 
+                                    ignore.case = TRUE), 
+         43920, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('m ?- ?plus', Software_String, 
+                                      ignore.case = TRUE), 
+         "Mplus", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('treee?dit', Software_String, 
+                                    ignore.case = TRUE), 
+         55014, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('treee?dit', Software_String, 
+                                      ignore.case = TRUE), 
+         "TREEEDIT", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('redhat', Software_String, 
+                                    ignore.case = TRUE), 
+         19693, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('redhat', Software_String, 
+                                      ignore.case = TRUE), 
+         "RedHat", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^direct ?x$', Software_String, 
+                                    ignore.case = TRUE), 
+         55011, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('^direct ?x$', Software_String, 
+                                      ignore.case = TRUE), 
+         "DirectX", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String =='NET' | 
+                       Software_String == 'Net' | 
+                       Software_String == 'Net Framework', 
+                     55009, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String =='NET' | 
+                         Software_String == 'Net' | 
+                         Software_String == 'Net Framework', 
+                       "NET", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'e' | 
+                       Software_String == 'E - ' | 
+                       Software_String == 'e1071' | 
+                       Software_String == 'e1701' | 
+                       Software_String == 'E5640', 
+                     55007, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String == 'e' | 
+                         Software_String == 'E - ' | 
+                         Software_String == 'e1071' |
+                         Software_String == 'e1701' | 
+                         Software_String == 'E5640', 
+                       "E", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('after effect', Software_String, 
+                                    ignore.case = TRUE), 
+         55006, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('after effect', Software_String, 
+                                      ignore.case = TRUE), 
+         "After Effects",
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^avid$', Software_String, 
+                                    ignore.case = TRUE), 
+         55005, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('^avid$', Software_String, 
+                                      ignore.case = TRUE), 
+         "CAVID", 
+         Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'C50', 
+                     55004, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String == 'C50', 
+                       "C50", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'C2000', 
+                     55003, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String == 'C2000', 
+                       "C2000", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'C2000', 
+                     55003, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String == 'C2000', 
+                       "C2000", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(Software_String == 'c', 
+                     43445, 
+                     Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(Software_String == 'c', 
+                       "C", 
+                       Software_Name)) %>%
+  mutate(Software_ID = ifelse(grepl('^creative suite$', Software_String, 
+                                    ignore.case = TRUE), 
+         55002, 
+         Software_ID)) %>% 
+  # false positive linking - small error
+  mutate(Software_Name = ifelse(grepl('^creative suite$', Software_String, 
+                                      ignore.case = TRUE), 
+         "Creative Suite", 
+         Software_Name))
+```
+
+Further, we remove 2 systematic extraction errors that were identified during information enrichment. Both are due to a specialized method being mistaken for software.
+
+```{r}
+df %>%
+  group_by(Paper_ID) %>%
+  filter(any(c('BLOSUM', 'B3LYP') %in% Software_Name)) %>% 
+  select(Set_ID, Paper_ID, Retraction_Reason, Control_Sample_Origin, 
+         Year, Scientific_Domain, Journal_Rank_Percentile) ->
+  paper_ids_removed
+
+df %<>%
+  filter(! Software_Name %in% c('BLOSUM', 'B3LYP'))
+  
+unique(paper_ids_removed) %>%
+  filter(! Paper_ID %in% df$Paper_ID) -> paper_ids_to_add
+
+df <- bind_rows(paper_ids_to_add, df) %>% ungroup()
+```
+
+Last, we define a second dataframe that contains the information for analyses based on retraction reasons. As we have 10 corresponding sample articles for each retracted article we can generate a separate control set for each retraction reason that is equally distributed concerning the controlled variables. We use this dataframe for extended analyses.
+
+```{r}
+df %>%  
+  select(Paper_ID, Retraction_Reason, Software_ID, Software_Name, 
+         Version, Developer, Citation, URL) %>%
+  mutate(URL=ifelse(is.na(URL), FALSE, TRUE)) %>%
+  filter(Retraction_Reason != 'non-retracted') %>% 
+  rename(OriginalReason=Retraction_Reason) %>%
+  distinct() %>%
+  mutate(set='retracted') ->
+  retracted_papers
+
+df %>%  
+  select(Paper_ID, Retraction_Reason, Software_ID, Software_Name, 
+         Version, Developer, Citation, URL, Control_Sample_Origin) %>%
+  mutate(URL=ifelse(is.na(URL), FALSE, TRUE)) %>%
+  inner_join(retracted_papers, by=c('Control_Sample_Origin'='Paper_ID')) %>%
+  select(Paper_ID, Software_ID=Software_ID.x, Software_Name=Software_Name.x, 
+         Version=Version.x, Developer=Developer.x,Citation=Citation.x, 
+         URL=URL.x, OriginalReason) %>%
+  mutate(set='non-retracted') %>%
+  distinct() ->
+  non_retracted_papers
+
+df_reason_sampled <- rbind(retracted_papers, non_retracted_papers)
+```
+
+# Results
+
+## Retraction Reasons
+
+First, we are getting an overview of the reasons for article retraction and their frequency in the given data. We only look at the manually summarized, top-level reasons as there are too many different specific reasons for a meaningful analysis.
+
+```{r, fig.height=2.5}
+df %>% 
+  filter(Set_ID=='retracted') %>%
+  dplyr::select(Paper_ID, Retraction_Reason) %>%
+  distinct() %>%
+  group_by(Retraction_Reason) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(Retraction_Reason=reorder(Retraction_Reason, n)) %>%
+  ggplot(aes(Retraction_Reason, n)) +
+  geom_bar(stat='identity', fill='lightblue')  + 
+  geom_text(aes(label=n)) +
+  labs(x='Reason for Retraction', y='Number of Articles', 
+       caption = 'Fig. S1: Number of articles corresponding to each retraction 
+    reasons. Articles can be retracted due to more than one 
+    reason.') + 
+  scale_fill_brewer(type='qual', palette = 6) +
+  coord_flip() +
+  theme(plot.caption = element_text(size=8))
+```
+
+## Software Usage in Retracted Articles
+
+Now, we perform the analyses on the software landscape and citation styles.
+
+### Papers that Mention Software
+
+We start with a basic analyses by looking at the relative number of articles that contain software.
+
+#### Overall
+
+We directly compare the relative numbers between sets.
+
+```{r}
+df %>%  
+  dplyr::select(Set_ID, Paper_ID, Software_ID) %>%
+  group_by(Set_ID, Paper_ID) %>%
+  summarize(has_software=ifelse(is.na(Software_ID), 0, 1),
+            .groups = "drop") %>%
+  distinct() %>%
+  group_by(Set_ID, has_software) %>%
+  summarize(n=n()) %>%
+  mutate(rel = n/sum(n)) %>%
+  group_by(Set_ID) %>%
+  mutate(num=n, n=sum(n)) %>%
+  ungroup() %>%
+  filter(has_software==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel - MoE) %>%
+  select(Set_ID, rel, CIl, CIu) %>% 
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>%
+  mutate(across(where(is.numeric), round, 1))
+```
+
+We further include a McNemar test for the paired, dichotomous data to test if there is a difference in the amount of articles mentioning software between retracted and control articles. The effect size is then calculated by an odds ratio between both groups.
+
+```{r}
+df %>%  
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Control_Sample_Origin) %>%
+  group_by(Set_ID, Paper_ID, Control_Sample_Origin) %>%
+  summarize(has_software=ifelse(is.na(Software_ID), 0, 1),
+            .groups = "drop") %>%
+  distinct() -> df_t
+
+x <- split(df_t, df_t$Set_ID)
+
+x$retracted %>%
+  select(-Control_Sample_Origin) %>%
+  inner_join(x$`non-retracted`, by=c("Paper_ID"="Control_Sample_Origin")) -> 
+  df_tmp
+
+df_tmp %>% group_by(has_software.x, has_software.y) %>% summarize(n = n()) -> 
+  data
+
+p <- matrix(
+  rev(data$n), 
+  nrow=2, 
+  dimnames = list(
+    "control" = c("software", "no-software"),  
+    "retracted" = c("software", "no-software")))
+
+mcnemar.test(p)
+
+odds_ratio <- data$n[3] / data$n[2]
+odds_ratio
+```
+
+#### Over Time
+
+We compare the numbers from the first to the last analyzed year per set.
+
+```{r}
+df %>%  
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Year) %>%
+  filter(Year %in% c(2000, 2019)) %>%
+  group_by(Set_ID, Paper_ID, Year) %>%
+  summarize(has_software=ifelse(is.na(Software_ID), 0, 1),
+            .groups = "drop") %>%
+  distinct() %>%
+  group_by(Set_ID, has_software, Year) %>%
+  summarize(n_has_software=n(),.groups='drop') %>%
+  group_by(Set_ID, Year) %>%
+  mutate(n_year=sum(n_has_software)) %>%
+  mutate(rel = n_has_software/n_year) %>%
+  ungroup() %>%
+  filter(has_software==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n_year), 
+         MoE = sqrt((rel * (1-rel))/n_year) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  select(Set_ID, Year, rel, CIl, CIu)  %>% 
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>%
+  mutate(across(where(is.numeric), round, 1))
+```
+
+Here, we depict the course detailed over all years in the analyses.
+
+```{r}
+df %>%  
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Year) %>%
+  group_by(Set_ID, Paper_ID, Year) %>%
+  summarize(has_software=ifelse(is.na(Software_ID), 0, 1),
+            .groups = "drop") %>%
+  distinct() %>%
+  group_by(Set_ID, has_software, Year) %>%
+  summarize(n_has_software=n(),.groups='drop') %>%
+  group_by(Set_ID, Year) %>%
+  mutate(n_year=sum(n_has_software)) %>%
+  mutate(rel = n_has_software/n_year) %>%
+  ungroup() %>%
+  filter(has_software==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n_year), 
+         MoE = sqrt((rel * (1-rel))/n_year) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  ggplot(aes(Year, rel)) + 
+    geom_line(aes(color=Set_ID)) + 
+    geom_ribbon(aes(ymin=CIl, ymax=CIu, fill=Set_ID), alpha=.2) + 
+    labs(x='Year', y='Relative Amount of Articles', 
+      caption = 'Fig. S2: Relative number of articles containing at least 
+    one software over time for retracted and control articles. 
+    95% CIs are indicated by lighter colored areas.') + 
+    theme(plot.caption = element_text(size=8)) +
+    scale_color_manual('Type of Article', 
+                      values = c("#2b83ba", "#ff8585")) +
+    scale_fill_manual('Type of Article', 
+                      values = c("#2b83ba", "#ff8585")) 
+```
+
+Confidence intervals are especially large for retracted articles because the overall number of samples decreases due to the year-based split (especially for earlier years, where the fewest samples are available).
+
+#### Per Retraction Reason
+
+Further, we also look at the relative number concerning specific retraction reasons. Each retraction reason has its own control set, which is created by using the 10 control samples for each article per retraction reason.
+
+```{r, fig.height=4.5, fig.width=8}
+df_reason_sampled %>%
+  group_by(Paper_ID, set, OriginalReason) %>%
+  summarize(has_software=ifelse(is.na(Software_ID), 0, 1), 
+            .groups = "drop") %>%
+  distinct() %>%
+  group_by(OriginalReason, set, has_software) %>%
+  summarize(n=n()) %>% 
+  mutate(rel = n/sum(n)) %>%
+  group_by(OriginalReason) %>%
+  mutate(n=sum(n)) %>%
+  ungroup() %>%
+  filter(has_software==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE)  %>%
+  mutate(rel = rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(set=ifelse(set=="non-retracted", "Control", 'Retracted')) %>%
+  select(OriginalReason, set, rel, CIu, CIl) %>% print(., n=16) %>%
+  mutate(plot="Amount of Articles with Software") %>%
+  mutate(OriginalReason = factor(OriginalReason, levels=reasons)) %>%
+  ggplot(aes(OriginalReason, rel)) + 
+  geom_point(aes(color=set), position=position_dodge(width=.6)) + 
+  geom_errorbar(aes(ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width = .6), width=.5) +
+  labs(x=element_blank(), y = "Relative Amount of Articles")  + 
+  scale_y_continuous(breaks = c(40, 60, 80, 100), 
+                     labels = c("40%", "60%", "80%", "100%")) +
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) + 
+  facet_wrap(~ plot, nrow=2, scales='free_y') -> p1
+  
+p1 +
+  labs(caption = 'Fig. S3: Relative amount of articles containing at least one 
+    software compared between retracted and control set 
+    divided by retraction reasons. A separate control set is 
+    constructed for each retraction reasons by selecting the 
+    ten corresponding articles for each retracted paper.') + 
+  theme(plot.caption = element_text(size=10))
+
+p1 <- p1 + theme(legend.position='top', 
+        axis.text.x=element_blank())
+```
+
+### Number of Different Software
+
+Next, we look at the average number of different software that is mentioned within articles that contain software.
+
+#### Overall
+
+First, the basic compare between sets.
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID) %>%
+  group_by(Set_ID, Paper_ID) %>%
+  summarize(n=ifelse(is.na(Software_ID), 0, n_distinct(Software_ID))) %>%
+  filter(n > 0) %>%
+  ungroup() %>%
+  distinct() %>%
+  group_by(Set_ID) %>%
+  summarize(m=mean(n), sd=sd(n), num=n(), ) %>%
+  mutate(CIl=m-(qt(p=.975, df=num-1)*(sd/sqrt(num))), 
+         CIu = m+(qt(p=.975, df=num-1)*(sd/sqrt(num))))
+```
+
+We further include a two-sample t-test to test if there is a difference in the number of software provided between retracted and control articles. An unpaired t-test is selected as data is not exactly paired because articles without software are removed for this test and we are considering a quantitative variable with the number of software. The effect size is calculated by using Cohen's d.
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Control_Sample_Origin) %>%
+  group_by(Set_ID, Paper_ID, Control_Sample_Origin) %>%
+  summarize(n=ifelse(
+    is.na(Software_ID), 
+    0, 
+    n_distinct(Software_ID)), 
+    .groups = 'drop') %>%
+  filter(n > 0) %>%
+  distinct() -> df_t
+
+x <- split(df_t, df_t$Set_ID)
+  
+t.test(
+  x = x$`non-retracted`$n, 
+  y = x$retracted$n, 
+  alternative = "two.sided", 
+  paired = F)
+cohens_d(x$`non-retracted`$n, x$retracted$n)
+```
+
+#### Per Year
+
+Then, as before, a year based comparison.
+
+```{r}
+df %>% 
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Year) %>%
+  group_by(Set_ID, Paper_ID, Year) %>%
+  summarize(n=ifelse(is.na(Software_ID), 0, n_distinct(Software_ID)), 
+            .groups='drop') %>%
+  filter(n > 0) %>%
+  distinct() %>%
+  group_by(Year, Set_ID) %>%
+  summarize(m=mean(n), sd=sd(n), num=n()) %>%
+  mutate(CIl=m-(qt(p=.975, df=num-1)*(sd/sqrt(num))), 
+         CIu = m+(qt(p=.975, df=num-1)*(sd/sqrt(num)))) %>% 
+  ggplot(aes(Year, m)) + 
+  geom_line(aes(color=Set_ID)) + 
+  geom_ribbon(aes(ymin=CIl,ymax=CIu, fill=Set_ID), alpha=.3) + 
+  labs(x='Year', y='Number of Distinct Software', 
+    caption = 'Fig. S4: Mean number of distinct software mentioned in articles 
+    that contain at least one software, depicted over time for
+    retracted and control articles. 95% CIs are indicated by lighter 
+    colored areas.') +
+  theme(plot.caption = element_text(size=8)) +
+    scale_color_manual('Type of Article', 
+                      values = c("#2b83ba", "#ff8585")) +
+    scale_fill_manual('Type of Article', 
+                      values = c("#2b83ba", "#ff8585")) 
+```
+
+Similarly, the CIs are quite large due to the reduced sample size, especially for the retracted set and in early years.
+
+#### Per Reason
+
+Again, we view the results per retraction reason. Here, we also combine the two generated plots for a better illustration of the results.
+
+```{r, fig.width=10.5, fig.height=6.5}
+df_reason_sampled %>% 
+  group_by(set, OriginalReason, Paper_ID) %>%
+  drop_na() %>%
+  summarize(n=ifelse(is.na(Software_ID), 0, n_distinct(Software_ID))) %>%
+  filter(n > 0) %>%
+  ungroup() %>%
+  distinct() %>%
+  group_by(set, OriginalReason) %>%
+  summarize(m=mean(n), sd=sd(n), num=n(), min=min(n), 
+            max=max(n), median=median(n)) %>% 
+  mutate(CIl=m-(qt(p=.975, df=num-1)*(sd/sqrt(num))), 
+         CIu = m+(qt(p=.975, df=num-1)*(sd/sqrt(num)))) %>%
+  mutate(set=ifelse(set=='non-retracted', "Control", "Retracted")) %>%
+  select(OriginalReason, set, m, CIu, CIl) %>% print(., n=16) %>%
+  mutate(plot="Number of Distinct Software") %>%
+  rename(rel=m) %>%
+  mutate(OriginalReason = factor(OriginalReason, levels=reasons)) %>%
+  ggplot(aes(OriginalReason, rel)) + 
+  geom_point(aes(color=set), position=position_dodge(width=.6)) + 
+  geom_errorbar(aes(ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width = .6), width=.5) +
+  labs(x=element_blank(), y = "Distinct Software")  + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) + 
+  ylim(1, 3.75) +
+  theme(legend.position='none', 
+        axis.text.x = element_text(angle=0)) +
+  facet_wrap(~ plot, nrow=2, scales='free_y') -> p2
+
+p_out <- p1 / p2 + plot_layout(heights = c(2,1))
+ggsave('software_amount.jpg', p_out, width=8, height=5)
+p_out  +
+  labs(caption = 'Fig S5 (Article Fig. 1.): Software mentions in scholarly articles per 
+    retraction reason separated by retracted and corresponding con-
+    trol articles. The sets of control papers are constructed by selecting 
+    the ten corresponding articles for each retracted article. Top: pro-
+    portion of articles that contain at least one software mention. Bottom: 
+    average number of software mentions per article with at least one soft-
+    ware mention. Error bars indicate 95% CIs.') +
+  theme(plot.caption = element_text(size=14))
+```
+
+### Software Based Analysis
+
+So far, we have looked at general differences in software usage between retracted and non-retracted articles. Now, we look at differences in usage of specific software. First, how often specific software is used between sets.
+
+#### Overall
+
+We analyze in which percentage of articles individual software is used (within all articles that mention software), and how the distributions vary between sets.
+
+```{r, fig.width=9.5, fig.height=4.5}
+df %>%
+  filter(Software_Type != "OperatingSystem") %>%
+  dplyr::select(Set_ID, Paper_ID, Software_Name, Software_ID) %>%
+  mutate(Software_Name=str_replace_all(Software_Name, " - ","-")) %>%
+  drop_na() %>%
+  distinct() %>%
+  group_by(Set_ID) %>%
+  mutate(n_articles = n_distinct(Paper_ID)) %>%
+  group_by(Set_ID, Software_Name, n_articles, Software_ID) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(Set_ID) %>%
+  mutate(rel=n/n_articles) %>%
+  mutate(SE = sqrt((rel*(1-rel))/n_articles)) %>%
+  mutate(CIl = rel - (1.96*SE), CIu = rel + (1.96*SE)) %>%
+  ungroup() %>%
+  group_by(Software_ID) %>%
+  mutate(s = sum(rel)) %>%
+  ungroup() %>%
+  slice_max(order_by = s, n = 40) %>%
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>% 
+  mutate(Software_Name=reorder(Software_Name, s)) %>%
+  select(Set_ID, Software_Name, n, rel, CIl, CIu) %>% print(., n=40) %>%
+  mutate(rel=ifelse(Set_ID=='non-retracted', -rel,rel)) %>%
+  mutate(CIl=ifelse(Set_ID=='non-retracted', -CIl,CIl)) %>%
+  mutate(CIu=ifelse(Set_ID=='non-retracted', -CIu,CIu)) %>%
+  mutate(Set_ID=ifelse(Set_ID=='non-retracted', 
+                       "Control", 
+                       "Retracted")) %>%
+  ggplot(aes(rel, Software_Name)) + 
+  geom_col(aes(fill=Set_ID)) + 
+  geom_errorbar(aes(y=Software_Name, xmin=CIl, xmax=CIu), width=0.8) + 
+  geom_text(aes(label=paste0(format(abs(rel),digits=1,nsmall=1), "%"), 
+                x = ifelse(abs(CIl)>5, sign(rel)*2.2, CIu + sign(rel)*1.8)), 
+            size=3) + 
+  labs(x='Relative Number of Articles', 
+       y='Disambiguated Software') + 
+  scale_fill_manual('Type of Article', 
+                    values = c("#2b83ba", "#ff8585")) +
+  scale_x_continuous(breaks=c(-.2,-.1,0,.1,.2,.3,.4)*100, 
+                     labels=paste0(c(.2,.1,0,.1,.2,.3,.4)*100, "%")) -> 
+  p_software
+
+ggsave("software_differences.jpg", p_software, width=8, height = 5)
+p_software + 
+  labs(caption = 'Fig S6 (Article Fig. 2.): Proportion of retracted and control 
+    articles mentioning software out of the top 20 most used 
+    software. Error bars indicate 95% CIs.') +
+  theme(plot.caption = element_text(size=12))
+```
+
+#### Statistics software
+
+We perform the same analyses limited to the most frequently used statistical software because it is the most common software group.
+
+```{r, fig.width=9, fig.height=4.3}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_Name, Software_ID) %>%
+  drop_na() %>%
+  distinct() %>%
+  group_by(Set_ID) %>%
+  mutate(n_articles = n_distinct(Paper_ID)) %>%
+  group_by(Set_ID, Software_Name, n_articles, Software_ID) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(Set_ID) %>%
+  mutate(rel=n/n_articles) %>%
+  mutate(SE = sqrt((rel*(1-rel))/n_articles)) %>%
+  mutate(CIl = rel - (1.96*SE), CIu = rel + (1.96*SE)) %>%
+  ungroup() %>%
+  group_by(Software_ID) %>%
+  mutate(s = sum(rel)) %>%
+  ungroup() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  filter(type == "Stat") %>%
+  slice_max(order_by = s, n = 30) %>%
+  mutate(rel=ifelse(Set_ID=='non-retracted', -rel,rel)) %>%
+  mutate(CIl=ifelse(Set_ID=='non-retracted', -CIl,CIl)) %>%
+  mutate(CIu=ifelse(Set_ID=='non-retracted', -CIu,CIu)) %>%
+  mutate(Set_ID=ifelse(Set_ID=='non-retracted', 
+                       "Control", 
+                       "Retracted")) %>%
+  mutate(Software_Name=reorder(Software_Name, s)) %>%
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>%
+  ggplot(aes(rel, Software_Name)) + 
+  geom_col(aes(fill=Set_ID)) + 
+  geom_errorbar(aes(y=Software_Name, xmin=CIl, xmax=CIu), width=0.8) + 
+  geom_text(aes(label=paste0(format(abs(rel),digits=1,nsmall=1), "%"), 
+                x = ifelse(abs(CIl)>5, sign(rel)*2.2, CIu + sign(rel)*1.8)), 
+            size=3) + 
+  labs(x='Relative Number of Articles',
+       y='Disambiguated Software',
+       caption = 'Fig S7: Proportion of retracted and control 
+    articles mentioning software out of the top 15 most used 
+    statistical software. Error bars indicate 95% CIs.') +
+  scale_fill_manual('Type of Article', 
+                    values = c("#2b83ba", "#ff8585")) +
+  scale_x_continuous(breaks=c(-.2,-.1,0,.1,.2,.3,.4)*100, 
+                     labels=paste0(c(.2,.1,0,.1,.2,.3,.4)*100, "%")) +
+  theme(plot.caption = element_text(size=12))
+```
+
+#### Per Reason
+
+Next, we look at individual software split per retraction reason.
+
+```{r, fig.width=10, fig.height=7.5}
+df_reason_sampled %>%
+  select(set, Paper_ID, Software_Name, Software_ID, OriginalReason) %>%
+  drop_na() %>%
+  distinct() %>%
+  group_by(set, OriginalReason) %>%
+  mutate(n_articles = n_distinct(Paper_ID)) %>%
+  group_by(set, OriginalReason, Software_Name, n_articles, Software_ID) %>%
+  count() %>%
+  group_by(set, OriginalReason) %>%
+  mutate(rel=n/n_articles) %>%
+  mutate(SE = sqrt((rel*(1-rel))/n_articles)) %>%
+  mutate(CIl = rel - (1.96*SE), CIu = rel + (1.96*SE)) %>%
+  ungroup() %>%
+  group_by(Software_ID, OriginalReason) %>%
+  mutate(s = sum(rel)) %>%
+  ungroup() %>%
+  group_by(OriginalReason) %>%
+  slice_max(order_by = s, n = 20) %>%
+  ungroup() %>%
+  mutate(rel=ifelse(set=='non-retracted', -rel,rel)) %>%
+  mutate(CIl=ifelse(set=='non-retracted', -CIl,CIl)) %>%
+  mutate(CIu=ifelse(set=='non-retracted', -CIu,CIu)) %>%
+  mutate(Software_Name=reorder(Software_Name, s)) %>% 
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>%
+  mutate(OriginalReason = factor(OriginalReason, levels=reasons)) -> 
+  tmp_df
+
+tmp_df %>%
+  filter(Software_Name == 'TargetScan', OriginalReason == 'PaperMill') %>%
+  select(set, OriginalReason, Software_Name, rel, CIl, CIu) %>%
+  mutate(across(where(is.numeric), round, 1))%>%
+  mutate(across(where(is.numeric), abs))
+
+tmp_df %>%
+  filter(Software_Name == 'SPSS', OriginalReason == 'PaperMill') %>%
+  select(set, OriginalReason, Software_Name, rel, CIl, CIu) %>%
+  mutate(across(where(is.numeric), round, 1))%>%
+  mutate(across(where(is.numeric), abs))
+
+tmp_df %>%
+  ggplot(aes(rel,Software_Name)) + 
+  geom_col(aes(fill=set)) + 
+  geom_errorbar(aes(y=Software_Name, xmin=CIl, xmax=CIu)) + 
+  labs(x='Relative Number of Mentions', 
+       y='Disambiguated Software',
+       caption = 'Fig S8: Proportion of retracted and control articles mentioning 
+    software out of the top 10 most used software per retraction 
+    reason. A separate control set is constructed for each retrac-
+    tion reasons by selecting the ten corresponding articles for 
+    each retracted paper.Error bars indicate 95% CIs.') + 
+  scale_fill_manual('Type of Article', 
+                    values = c("#2b83ba", "#ff8585")) +
+  theme(legend.position = 'top',
+        plot.caption = element_text(size=14)) +
+  scale_x_continuous(breaks=c(-.2,0,.2,.4,.6,.8)*100, 
+                     labels=paste0(c(.2,0,.2,.4,.6,.8)*100, "%")) +
+  facet_wrap(scales="free_y", ~ OriginalReason)
+```
+
+### Software Distribution
+
+We look at how software is distributed within articles by analyzing in what proportion of articles any of the top n software appears. This gives us an estimate of how diverse the used software is.
+
+```{r, fig.width=8}
+get_nums <- function(df, num) {
+  df %>%
+    select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+    drop_na(Software_ID) %>%
+    filter(Set_ID == 'non-retracted') %>%
+    distinct() %>%
+    group_by(Software_ID, Software_Name) %>%
+    summarize(n=n(), .groups = 'drop') %>%
+    arrange(desc(n)) %>%
+    slice_head(n = num) -> top_n_control
+  
+  df %>%
+    select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+    drop_na(Software_ID) %>%
+    filter(Set_ID == 'retracted') %>%
+    distinct() %>%
+    group_by(Software_ID, Software_Name) %>%
+    summarize(n=n(), .groups = 'drop') %>%
+    arrange(desc(n)) %>%
+    slice_head(n = num) -> top_n_retracted
+  
+  df %>%
+    select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+    drop_na(Software_ID) %>%
+    filter(Set_ID == 'non-retracted') %>%
+    group_by(Set_ID) %>%
+    mutate(o=n_distinct(Paper_ID)) %>%
+    distinct() %>%
+    filter(Software_ID %in% top_n_control$Software_ID) %>%
+    group_by(Set_ID, o) %>%
+    summarize(n = n_distinct(Paper_ID), .groups = 'drop_last') %>%
+    mutate(rel = n / o) -> res1
+  
+  df %>%
+    select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+    drop_na(Software_ID) %>%
+    filter(Set_ID == 'retracted') %>%
+    group_by(Set_ID) %>%
+    mutate(o=n_distinct(Paper_ID)) %>%
+    distinct() %>%
+    filter(Software_ID %in% top_n_retracted$Software_ID) %>%
+    group_by(Set_ID, o) %>%
+    summarize(n = n_distinct(Paper_ID), .groups = 'drop_last') %>%
+    mutate(rel = n / o) -> res2
+  
+  rbind(res1, res2) %>%
+    mutate(num_id=num)
+}
+
+lapply(1:76, function(i){get_nums(df, i)}) %>% bind_rows() -> out_df
+
+out_df %>%
+  ggplot(aes(x=num_id, y=rel, group=Set_ID, color=Set_ID)) +
+  geom_line() +
+  geom_point() + 
+  labs(x='Top n software', 
+       y='Amount of Articles', 
+       caption = 'Fig S9: Relative amount of articles mentioning at least one of 
+       the top n software out of all articles that mention software.') + 
+  scale_y_continuous(limits = c(0, 0.90), 
+                     breaks=c(0, 0.25, 0.50, 0.75)) +
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  theme(plot.caption = element_text(size=11))
+
+# Getting breakpoints
+out_df %>%
+  filter(rel > 0.25) %>%
+  group_by(Set_ID) %>%
+  slice_min(order_by=rel, n=1) %>%
+  mutate(value = .25)
+
+out_df %>%
+  filter(rel > 0.5) %>%
+  group_by(Set_ID) %>%
+  slice_min(order_by=rel, n=1) %>%
+  mutate(value = .5)
+
+out_df %>%
+  filter(rel > 0.75) %>%
+  group_by(Set_ID) %>%
+  slice_min(order_by=rel, n=1) %>%
+  mutate(value = .75)
+```
+
+### Software Names and Spelling Variations
+
+Different spelling variations and names are used to refer to the same software. We analyze if there is a trend towards using the most common software name.
+
+```{r, fig.width=8.5}
+df %>%
+  filter(Set_ID == 'retracted') %>%
+  select(Set_ID, Software_ID, Software_Name, Software_String) %>%
+  drop_na(Software_ID) %>%
+  group_by(Set_ID, Software_ID, Software_Name) %>% 
+  summarize(n = n_distinct(Software_String), .groups = 'drop') %>%
+  filter(n > 8) -> software_to_compare
+
+df %>%
+  drop_na(Software_ID) %>%
+  filter(Software_ID %in% software_to_compare$Software_ID) %>%
+  select(Set_ID, Software_ID, Software_Name, Software_String) %>%
+  group_by(Set_ID, Software_ID, Software_Name, Software_String) %>% 
+  summarize(n = n(), .groups = 'drop_last') %>%
+  arrange(desc(n)) %>%
+  mutate(rel = n/sum(n)) %>%
+  mutate(n = sum(n)) %>%
+  mutate(SE = sqrt((rel*(1-rel))/n)) %>%
+  mutate(CIl = rel - (1.96*SE), CIu = rel + (1.96*SE)) %>%
+  mutate(rel = rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  slice_head(n=1) %>%
+  ungroup() %>%
+  ggplot(aes(x=Software_Name, y=rel, group=Set_ID, color=Set_ID)) +
+  geom_errorbar(aes(ymin=CIl, ymax=CIu), 
+                position=position_dodge(width = .6), width=.5) +
+  geom_point(position=position_dodge(width=.6)) +
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  labs(x='Disambiguated Software', 
+       y='Amount of Mentions', 
+       caption = 'Fig S10: Relative amount of articles mentioning a specific software
+    and referring to it by its most commonly used name.') +
+  theme(plot.caption = element_text(size=11))
+```
+
+Taking a closer look at the names used for SPSS and ImageJ, which we found to be differently mentioned between retracted and control set.
+
+```{r}
+df %>%
+  filter(Software_Name %in% c('SPSS', 'ImageJ')) %>%
+  select(Set_ID, Paper_ID, Software_Name, Software_String) %>%
+  distinct() %>%
+  group_by(Set_ID, Software_Name, Software_String) %>%
+  summarize(n = n(), .groups = 'drop_last') %>%
+  mutate(rel = n / sum(n)) %>%
+  mutate(n = sum(n)) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE)  %>%
+  mutate(rel = rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  select(Set_ID, Software_Name, Software_String, rel, CIl, CIu) %>%
+  slice_max(order_by = rel, n = 5) %>%
+  arrange(desc(rel), .by_group=TRUE) %>% print(., n=21)
+```
+
+### Free and Open Source Software
+
+We analyze the use of free vs commercial software and the use of open- vs closed-source software between retracted and control set.
+
+#### Overall
+
+First, we perform an overall compare between sets.
+
+##### Free
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, free) %>%
+  summarize(n=n(), .groups = 'drop_last') %>%
+  mutate(rel = n / sum(n)) %>%
+  mutate(n = sum(n)) %>%
+  ungroup() %>%
+  filter(free==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  select(Set_ID, free, n, rel, CIl, CIu)
+```
+
+##### Open Source
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, source) %>%
+  summarize(n=n(), .groups = 'drop_last') %>%
+  mutate(rel = n / sum(n)) %>%
+  ungroup() %>%
+  filter(source==1) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  select(Set_ID, source, n, rel, CIl, CIu)
+```
+
+```{r, fig.height=3.5}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Software_Name) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  mutate(Set_ID=ifelse(Set_ID=='retracted', 
+                       "Retracted", 
+                       "Control")) %>%
+  mutate(Set_ID=factor(Set_ID, levels= c("Control","Retracted"))) %>%
+  mutate(free=ifelse(free, 'Free', 'Commercial')) %>%
+  mutate(source=ifelse(source, 'Open Source', 'Closed Source')) %>%
+  pivot_longer(c('free', 'source'), names_to="open_source") %>%
+  mutate(open_source= ifelse('free'==open_source, 
+                             "Software availability", 
+                             "Source availablity")) %>%
+  group_by(Set_ID, open_source, value) %>%
+  mutate(value=factor(value, levels=c('Free', 
+                                      'Commercial', 
+                                      'Open Source', 
+                                      'Closed Source')))%>%
+  summarize(n=n(), .groups = 'drop_last') %>%
+  mutate(rel = n / sum(n)) %>%
+  ungroup() %>%
+  group_by(Set_ID, open_source) %>%
+  mutate(n = sum(n)) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  mutate(rel = rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  ggplot(aes(x=value, rel)) + 
+  geom_point(aes(color=Set_ID), 
+             position = position_dodge(width = 0.7)) +
+  geom_errorbar(aes(ymin=CIl, ymax=CIu, color=Set_ID), 
+                position = position_dodge(width = 0.7), width=0.6) + 
+  scale_y_continuous(limits=c(0,75), breaks=c(0,.2,.4,.6)*100, 
+                     labels=paste0(c(0,.2,.4,.6)*100, "%")) +
+  facet_grid(~ open_source, scales='free_x') +
+  scale_color_manual("Type of Article", 
+                     values = c("#2b83ba", "#ff8585")) +
+  labs(y="Proportion of Software") + 
+  theme(axis.title.x = element_blank()) ->
+  p_source
+
+ggsave("Open_source_software.jpg", p_source, width=4.3, height = 3)
+p_source +
+  labs(caption = 'Fig S11 (Article Fig. 3.): Proportion of free or open source 
+    software across retracted and control articles. Error bars 
+    indicate 95% CIs.') +
+  theme(plot.caption = element_text(size=8))
+```
+
+###### Statistical Test
+
+We further perform a statistical test to investigate if there is a difference in free and open source software usage between retracted and control articles. In this context, we observed that there is a relation between the amount of free (and open source) software and the number of software used within an article, where the ratio of free (and open source) software increases with the number of software per article. Therefore, we include this number of software in an article as a covariate in tests on free (and open source) software.
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, 
+                Software_Name, Control_Sample_Origin) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Paper_ID, Control_Sample_Origin) %>%
+  summarize(
+    n_free = sum(free) / n(), 
+    n_source = sum(source) / n(), 
+    n=n(), 
+    .groups = 'drop_last') -> df_t
+
+df_t %>%
+  group_by(n) %>%
+  summarize(
+    m_free = mean(n_free), 
+    sd_free=sd(n_free),
+    m_source = mean(n_source), 
+    sd_source=sd(n_source)
+    ) %>%
+  pivot_longer(-n, 
+               names_to=c('value_type', 'availability'), 
+               names_sep='_') %>%
+  pivot_wider(names_from = value_type, values_from = value) %>%
+  ggplot(aes(n, m, color=availability)) + 
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin=pmax(0, m-sd), ymax=pmin(1, m+sd)), alpha=.1)
+```
+
+We use a GLM and include the retraction state and the number of software in the article as covariates to predict the availability of a software, and further include their interactions for completeness. Effect sizes are then estimated through odds ratios.
+
+```{r}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, 
+                Software_Name, Control_Sample_Origin) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, Paper_ID, Control_Sample_Origin) %>%
+  mutate(n = n()) %>%
+  ungroup() ->  df_tt
+
+model <- glm(
+  formula=free~Set_ID+n+Set_ID*n, 
+  data=mutate(df_tt, Set_ID=factor(Set_ID, c('retracted', 'non-retracted'))), 
+  family = binomial(link="logit"))
+summary(model)
+exp(summary(model)$coefficients["n",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["n",2])
+exp(summary(model)$coefficients["Set_IDnon-retracted",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["Set_IDnon-retracted",2])
+
+model <- glm(
+  formula=source~Set_ID+n+Set_ID*n, 
+  data=mutate(df_tt, Set_ID=factor(Set_ID, c('retracted', 'non-retracted'))), 
+  family = binomial(link="logit"))
+summary(model)
+exp(summary(model)$coefficients["n",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["n",2])
+exp(summary(model)$coefficients["Set_IDnon-retracted",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["Set_IDnon-retracted",2])
+```
+
+#### Per Reason
+
+Then, we extend the analyses concerning individual retraction reasons.
+
+```{r, fig.height=15}
+df_reason_sampled %>%
+  select(set, Paper_ID, Software_ID, Software_Name, OriginalReason) %>%
+  distinct() %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  mutate(Set_ID=ifelse(set=='retracted', 
+                       "Retracted", 
+                       "Control")) %>%
+  mutate(Set_ID=factor(set, levels= c("Control","Retracted"))) %>%
+  mutate(free=ifelse(free, 'Free', 'Commercial')) %>%
+  mutate(source=ifelse(source, 
+                       'Open Source', 
+                       'Closed Source')) %>%
+  pivot_longer(c('free', 'source'), names_to="open_source") %>%
+  mutate(open_source= ifelse('free'==open_source, 
+                             "Software availability", 
+                             "Source availablity")) %>%
+  group_by(set, OriginalReason, open_source, value) %>%
+  mutate(value=factor(value, levels=c('Free', 
+                                      'Commercial', 
+                                      'Open Source', 
+                                      'Closed Source')))%>%
+  summarize(n=n(), .groups = 'drop_last') %>%
+  mutate(rel = n / sum(n)) %>%
+  mutate(n = sum(n)) %>%
+  ungroup() %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  mutate(rel = rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  select(set, OriginalReason, open_source, value, n, rel, CIl, CIu) %>% 
+  print(., n=64) %>%
+  ggplot(aes(x=value, rel)) + 
+  geom_point(aes(color=set), 
+             position = position_dodge(width = 0.7)) +
+  geom_errorbar(aes(ymin=CIl, ymax=CIu, color=set), 
+                position = position_dodge(width = 0.7), width=0.6) +
+  facet_grid(OriginalReason ~ open_source , scales='free_x') +
+  scale_color_manual("Type of Article", 
+                     values=c("#2b83ba", "#ff8585")) +
+  labs(y="Proportion of Software",
+       caption='Fig S12: Proportion of free or open source software across
+    retracted and control articles per retraction reason. A sep-
+    arate control set is constructed for each retraction reasons 
+    by selecting the ten corresponding articles for each retrac-
+    ted paper. Error bars indicate 95% CIs.') + 
+  theme(axis.title.x = element_blank(),
+        plot.caption = element_text(size=14)) 
+
+```
+
+### Software Type
+
+We analyze the difference in software type usage between retracted and control articles based on the types: Application, PlugIn, Programming Environment, and Operating System.
+
+```{r, fig.width=8}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Software_Type) %>%
+  drop_na() %>%
+  distinct() %>%
+  group_by(Set_ID, Software_Type) %>%
+  summarize(n=n(), .groups = 'drop_last') %>%
+  group_by(Set_ID) %>%
+  mutate(rel=n/sum(n)) %>%
+  group_by(Set_ID) %>%
+  mutate(n=sum(n)) %>%
+  ungroup() %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n),
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIu = rel + MoE, CIl = rel-MoE) %>%
+  mutate(rel=rel*100, CIl=CIl*100, CIu=CIu*100) %>%
+  mutate(Set_ID=ifelse(Set_ID=='non-retracted', 
+                       "Control", 
+                       "Retracted")) %>%
+  select(Set_ID, Software_Type, n, rel, CIl, CIu) %>% 
+  print(., n=8) %>%
+  ggplot(aes(rel, Software_Type)) +
+  geom_col(aes(fill=Set_ID), position='dodge') +
+  geom_errorbar(aes(y=Software_Type, xmin=CIl, xmax=CIu, group=Set_ID), 
+                position='dodge') +
+  geom_text(aes(x = ifelse(abs(CIl)>10, CIl - 4, CIu + 3.5), 
+                y=Software_Type, 
+                group=Set_ID, 
+                label=paste0(format(abs(rel),digits=1,nsmall=1), "%")), 
+            position = position_dodge(width = .9), size=3) + 
+  scale_fill_manual('Type of Article', 
+                    values = c("#2b83ba", "#ff8585")) +
+  theme(legend.position = 'top',
+        plot.caption = element_text(size=10)) +
+  labs(x='Proportion of Mentions',
+       y='Software Type',
+       caption = 'Fig S13: Proportion of software types on overall software mentions
+    between retracted and control articles.')
+```
+
+## Citation Quality
+
+After exploring the software landscape, we analyze the citation quality for software.
+
+### Overall
+
+First, we directly compare the sets.
+
+```{r, fig.height=3.5}
+names <- c("No Info", "Incomplete Info", 
+           "Informal Citation", "Formal Citation")
+
+df %>%
+  select(Set_ID, Paper_ID, Software_ID, Version, Developer, Citation) %>%
+  filter(!is.na(Software_ID)) %>%
+  group_by(Set_ID, Paper_ID, Software_ID) %>%
+  summarize(Version=any(Version), 
+            Developer=any(Developer), 
+            Citation=any(Citation), 
+            .groups = 'drop_last') %>%
+  mutate(version_and_developer = Version & Developer & ! Citation, 
+         no_citation_info = ! Version & ! Developer & ! Citation,
+         version_or_developer = (Version & ! Developer & ! Citation) | 
+           (Developer & ! Version & ! Citation),
+         citation_p = Citation) %>%
+  dplyr::select(-Version, -Developer, -Citation) %>%
+  rename(Citation=citation_p) %>%
+  distinct() %>%
+  group_by(Set_ID) %>%
+  summarize(`No Info` = sum(no_citation_info),
+            `Incomplete Info` = sum(version_or_developer),
+            `Formal Citation` = sum(Citation),
+            `Informal Citation` = sum(version_and_developer),
+            n = n(),
+            .groups = 'drop_last') %>%
+  pivot_longer(c(`No Info`, `Incomplete Info`, 
+                 `Formal Citation`, `Informal Citation`)) %>%
+  mutate(rel = value/n) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIl = rel-MoE, CIu = rel + MoE) %>% 
+  group_by(name) %>%
+  mutate(order=sum(rel))  %>%
+  ungroup() %>%
+  mutate(name=factor(name, levels=names)) %>%
+  mutate(rel=rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(Set_ID = ifelse('non-retracted'==Set_ID, 
+                         "Control", 
+                         "Retracted")) %>%
+  select(Set_ID, name, value, rel, CIl, CIu) %>% 
+  print(.) %>%
+  ggplot(aes(name, rel)) + 
+  geom_point(aes(x=name, color=Set_ID), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=name, ymin=CIl, ymax=CIu, color=Set_ID), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions',
+       caption = 'Fig S14: Proportion of software across different levels of citation
+    completeness, separated by retracted and control articles. No Info: 
+    Neither the version, nor the developer of a software are provided; 
+    Incomplete Info: Either version or developer is provided; Informal 
+    Citation: Version and developer are provided; Formal citation: soft-
+    ware mention is accompanied by bibliographic citation. Error bars 
+    indicate 95% CIs.') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  scale_y_continuous(limits=c(0,45), 
+                     breaks=c(0, 20, 40), 
+                     labels=c("0%", "20%", "40%")) + 
+  theme(legend.position = 'top', 
+        axis.title.x = element_blank(),
+        plot.margin = unit(c(0,1,0,1), 'mm'),
+        plot.caption = element_text(size=8))
+
+```
+
+### Free and Commercial Software
+
+Then, we look at the citation quality divided by free and commercial software because prior work has shown that there are differences in their citation [@Du2022].
+
+```{r, fig.height=4, fig.width=8}
+
+df %>%
+  select(Set_ID, Paper_ID, Software_ID, Software_Name, 
+         Version, Developer, Citation) %>%
+  filter(!is.na(Software_ID)) %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, free, Paper_ID, Software_ID) %>%
+  summarize(Version=any(Version), 
+            Developer=any(Developer), 
+            Citation=any(Citation), 
+            .groups = 'drop_last') %>%
+  mutate(version_and_developer = Version & Developer & ! Citation, 
+         no_citation_info = ! Version & ! Developer & ! Citation,
+         version_or_developer = (Version & ! Developer & ! Citation) | 
+           (Developer & ! Version & ! Citation),
+         citation_p = Citation) %>%
+  select(-Version, -Developer, -Citation) %>%
+  rename(Citation=citation_p) %>%
+  distinct() %>%
+  group_by(Set_ID, free) %>%
+  summarize(`No Info` = sum(no_citation_info),
+            `Incomplete Info` = sum(version_or_developer),
+            `Formal Citation` = sum(Citation),
+            `Informal Citation` = sum(version_and_developer),
+            n = n(),
+            .groups = 'drop_last') %>%
+  pivot_longer(c(`No Info`, `Incomplete Info`, 
+                 `Formal Citation`, `Informal Citation`)) %>%
+  mutate(rel = value/n) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIl = rel-MoE, CIu = rel + MoE) %>%
+  group_by(name) %>%
+  mutate(order=sum(rel))  %>%
+  ungroup() %>%
+  mutate(name=factor(name, levels=names)) %>%
+  mutate(free=ifelse(free, "Free", "Commercial")) %>%
+  mutate(rel=rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(Set_ID = ifelse('non-retracted'==Set_ID, 
+                         "Control", 
+                         "Retracted")) %>%
+  select(Set_ID, free, name, value, rel, CIl, CIu) %>% 
+  print(.) ->
+  df_ccomplete
+
+df_ccomplete %>%
+  ggplot(aes(free,rel)) + 
+  geom_point(aes(x=free, color=Set_ID), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=free, ymin=CIl, ymax=CIu, color=Set_ID), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  scale_y_continuous(breaks=c(0, 20, 40), 
+                     labels=c("0%", "20%", "40%")) + 
+  theme(legend.position = 'top', 
+        axis.title.x = element_blank(),
+        plot.margin = unit(c(0,1,0,1), 'mm')) +
+  facet_grid(~name) -> pp
+
+ggsave("one_column_plot.jpg", pp, width = 8, height = 3)
+pp +
+  labs(caption = 'Fig S15 (Article Fig. 4): Proportion of software across different
+    levels of citation completeness, separated by retracted and control
+    articles and between free and commercial software. No Info: Neither 
+    the version, nor the developer of a software are provided; Incomplete
+    Info: Either version or developer is provided; Informal Citation: 
+    Version and developer are provided; Formal citation: software mention 
+    is accompanied by bibliographic citation. Error bars indicate 95% CIs.') +
+  theme(plot.caption = element_text(size=10))
+```
+
+### Open and Closed Source Software
+
+We perform the same analysis for open and closed source software expecting similar results as the attributes free and open source are strongly correlated.
+
+```{r, fig.height=4, fig.width=8}
+df %>%
+  dplyr::select(Set_ID, Paper_ID, Software_ID, Software_Name, 
+                Version, Developer, Citation) %>%
+  filter(!is.na(Software_ID)) %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, source, Paper_ID, Software_ID) %>%
+  summarize(Version=any(Version), 
+            Developer=any(Developer), 
+            Citation=any(Citation), 
+            .groups = 'drop_last') %>%
+  mutate(version_and_developer = Version & Developer & ! Citation, 
+         no_citation_info = ! Version & ! Developer & ! Citation,
+         version_or_developer = (Version & ! Developer & ! Citation) | 
+           (Developer & ! Version & ! Citation),
+         citation_p = Citation) %>% 
+  dplyr::select(-Version, -Developer, -Citation) %>%
+  rename(Citation=citation_p) %>%
+  distinct() %>%
+  group_by(Set_ID, source) %>%
+  summarize(`No Info` = sum(no_citation_info),
+            `Incomplete Info` = sum(version_or_developer),
+            `Formal Citation` = sum(Citation),
+            `Informal Citation` = sum(version_and_developer),
+            n = n(),
+            .groups = 'drop_last') %>%
+  pivot_longer(c(`No Info`, `Incomplete Info`, 
+                 `Formal Citation`, `Informal Citation`)) %>%
+  mutate(rel = value/n) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIl = rel-MoE, CIu = rel + MoE) %>%
+  group_by(name) %>%
+  mutate(order=sum(rel))  %>%
+  ungroup() %>%
+  mutate(name=factor(name, levels=names)) %>%
+  mutate(source=ifelse(source, "Open", "Closed")) %>%
+  mutate(rel=rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(Set_ID = ifelse('non-retracted'==Set_ID, 
+                         "Control", 
+                         "Retracted")) %>%
+  select(Set_ID, source, name, value, rel, CIl, CIu) %>% 
+  print(.) ->
+  df_ccomplete
+
+df_ccomplete %>%
+  ggplot(aes(source,rel)) + 
+  geom_point(aes(x=source, color=Set_ID), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=source, ymin=CIl, ymax=CIu, color=Set_ID), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions', 
+       caption = 'Fig S16: Proportion of software across different levels of citation
+    completeness, separated by retracted and control articles and between 
+    open-source and closed-source software. No Info: Neither the version, 
+    nor the developer of a software are provided; Incomplete Info: Either 
+    version or developer is provided; Informal Citation: Version and devel-
+    oper are provided; Formal citation: software mention is accompanied 
+    by bibliographic citation. Error bars indicate 95% CIs.') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  scale_y_continuous(breaks=c(0, 20, 40), 
+                     labels=c("0%", "20%", "40%")) + 
+  theme(legend.position = 'top', 
+        axis.title.x = element_blank(),
+        plot.margin = unit(c(0,1,0,1), 'mm'),
+        plot.caption = element_text(size=11)) +
+  facet_grid(~name) 
+```
+
+###### Statistical Test
+
+We include a further statistical test to test whether the citation quality in terms of formal software citation differs between retracted and control articles. We use a GLM and include retraction state, number of software, and availability (free vs commercial or open source vs close source) as covariates to predict whether a software was formally cited. We further include their interaction, particularly, retraction state and availability, which we know to be related from a prior test. Finally, we estimate effect sizes through odds ratios.
+
+```{r}
+df %>%
+  select(Set_ID, Paper_ID, Software_ID, Software_Name, Version, 
+         Developer, Citation, Control_Sample_Origin) %>%
+  filter(!is.na(Software_ID)) %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(Set_ID, Paper_ID,  Software_ID, 
+           Control_Sample_Origin, free, source) %>%
+  summarise(citation=any(Citation), .groups = 'drop') %>%
+  group_by(Set_ID, Paper_ID, Control_Sample_Origin) %>%
+  mutate(n=n()) %>% 
+  ungroup() -> df_tt
+  
+model <- glm(
+  citation~Set_ID+source+free+n+.*.,
+  data=select(
+    mutate(
+      df_tt, 
+      Set_ID=factor(Set_ID, c('retracted', 'non-retracted'))), 
+    -c(Paper_ID, Software_ID, Control_Sample_Origin)), 
+  family=binomial(link='logit'))
+summary(model)
+exp(summary(model)$coefficients["n",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["n",2])
+exp(summary(model)$coefficients["free",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["free",2])
+exp(summary(model)$coefficients["source",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["source",2])
+exp(summary(model)$coefficients["Set_IDnon-retracted",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["Set_IDnon-retracted",2])
+exp(summary(model)$coefficients["source:free",1] + qnorm(c(0.025,0.5,0.975)) * 
+      summary(model)$coefficients["source:free",2])
+```
+
+### Per Reason (Free and Commercial)
+
+Then, we extend the analysis to cover retraction reasons.
+
+```{r, fig.width=11, fig.height=8.5}
+df_reason_sampled %>%
+  filter(!is.na(Software_ID)) %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(set, free, OriginalReason, Paper_ID, Software_ID) %>%
+  summarize(Version=any(Version), 
+            Developer=any(Developer), 
+            Citation=any(Citation), 
+            .groups = 'drop_last') %>%
+  distinct() %>%
+  mutate(version_and_developer = Version & Developer & ! Citation, 
+         no_citation_info = ! Version & ! Developer & ! Citation,
+         version_or_developer = (Version & ! Developer & ! Citation) | 
+           (Developer & ! Version & ! Citation),
+         citation_p = Citation) %>% 
+  dplyr::select(-Version, -Developer, -Citation) %>%
+  rename(Citation=citation_p) %>%
+  distinct() %>%
+  group_by(set, free, OriginalReason) %>%
+  summarize(`No Info` = sum(no_citation_info),
+            `Incomplete Info` = sum(version_or_developer),
+            `Formal Citation` = sum(Citation),
+            `Informal Citation` = sum(version_and_developer),
+            n = n(),
+            .groups = 'drop_last') %>%
+  pivot_longer(c(`No Info`, `Incomplete Info`, 
+                 `Formal Citation`, `Informal Citation`)) %>%
+  mutate(rel = value/n) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIl = rel-MoE, CIu = rel + MoE) %>%
+  group_by(name) %>%
+  ungroup() %>%
+  mutate(name=factor(name, levels=names)) %>%
+  mutate(rel=rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(free=ifelse(free, "Free", "Commercial")) %>%
+  mutate(set = ifelse('non-retracted'==set, 
+                      "Control", 
+                      "Retracted")) %>%
+  mutate(OriginalReason = factor(OriginalReason, levels=reasons)) %>%
+  select(set, free, OriginalReason, name, rel, CIl, CIu) %>% 
+  print(., n=128) ->
+  df_creasons 
+
+filter(df_creasons, OriginalReason %in% c("Error", 
+                                          "Investigation", 
+                                          "Plagiarism", 
+                                          "SelfPlagiarism")) %>%
+  ggplot(aes(free,rel)) + 
+  geom_point(aes(color=set), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=free, ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  theme(legend.position = 'top', 
+        axis.title.x = element_blank(), axis.text.y = element_blank(), 
+        axis.ticks.y.left = element_blank(),
+        axis.text.y.right = element_text(hjust=.55),
+        axis.title.y.right = element_blank(),
+        plot.margin = unit(c(0,1,0,0), 'mm'),
+        )  +
+  facet_grid(OriginalReason~name, switch='y') +
+    scale_y_continuous(
+      limits = c(-2, 82), 
+      breaks=c(0, 20, 40, 60, 80), 
+      labels=c("0%", "20%", "40%", "60%", "80%"), 
+      sec.axis = sec_axis(~., breaks=c(0, 20, 40, 60, 80), 
+                          labels=c("0%", "20%", "40%", "60%", "80%"))) ->
+    p_creasons1
+
+filter(df_creasons, OriginalReason %in% c("Misconduct", 
+                                          "PaperMill", 
+                                          "other")) %>%
+  ggplot(aes(free,rel)) + 
+  geom_point(aes(color=set), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=free, ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  scale_y_continuous(limits = c(-2, 82)) +
+  theme(legend.position = 'none', 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y.left = element_blank()) +
+  facet_grid(OriginalReason~name) ->
+  p_creasons2
+
+pp <- p_creasons1 + (p_creasons2 / plot_spacer() + 
+                       plot_layout(heights = c(33.5,10)))
+ggsave("two_column_plot.jpg", pp, width=12, height=7, bg = 'white')
+pp + 
+  plot_annotation(caption = 'Fig S17 (Article Fig. 5): Proportion of software mentions across 
+    different levels of citation completeness per retraction reason, 
+    separated by retracted and control articles. No Info: Neither the
+    version, nor the developer of a software is provided; Incomplete 
+    Info: Either version or developer are provided; Informal Citation: 
+    Version and developer are provided; Formal citation: software 
+    mention is accompanied by bibliographic citation (independent 
+    from any associated information). Error bars indicate 95% CIs.') &
+  theme(plot.caption = element_text(size=14))
+```
+
+### Per Reason (Open and Closed Source)
+
+We also repeat this analysis for open and closed source software.
+
+```{r, fig.width=11, fig.height=8.5}
+df_reason_sampled %>%
+  filter(!is.na(Software_ID)) %>%
+  inner_join(software_enrichment, by=c(
+    'Software_ID'='Software_ID', 
+    'Software_Name'='Software_Name')) %>%
+  group_by(set, source, OriginalReason, Paper_ID, Software_ID) %>%
+  summarize(Version=any(Version), 
+            Developer=any(Developer), 
+            Citation=any(Citation), 
+            .groups = 'drop_last') %>%
+  distinct() %>%
+  mutate(version_and_developer = Version & Developer & ! Citation, 
+         no_citation_info = ! Version & ! Developer & ! Citation,
+         version_or_developer = (Version & ! Developer & ! Citation) | 
+           (Developer & ! Version & ! Citation),
+         citation_p = Citation) %>% 
+  dplyr::select(-Version, -Developer, -Citation) %>%
+  rename(Citation=citation_p) %>%
+  distinct() %>%
+  group_by(set, source, OriginalReason) %>%
+  summarize(`No Info` = sum(no_citation_info),
+            `Incomplete Info` = sum(version_or_developer),
+            `Formal Citation` = sum(Citation),
+            `Informal Citation` = sum(version_and_developer),
+            n = n(),
+            .groups = 'drop_last') %>%
+  pivot_longer(c(`No Info`, `Incomplete Info`, 
+                 `Formal Citation`, `Informal Citation`)) %>%
+  mutate(rel = value/n) %>%
+  mutate(SEM=sqrt((rel * (1-rel))/n), 
+         MoE = sqrt((rel * (1-rel))/n) * 1.96) %>%
+  mutate(CIl = rel-MoE, CIu = rel + MoE) %>%
+  group_by(name) %>%
+  ungroup() %>%
+  mutate(name=factor(name, levels=names)) %>%
+  mutate(rel=rel*100, CIu=CIu*100, CIl=CIl*100) %>%
+  mutate(source=ifelse(source, "Open", "Closed")) %>%
+  mutate(set = ifelse('non-retracted'==set, 
+                      "Control", 
+                      "Retracted")) %>%
+  mutate(OriginalReason = factor(OriginalReason, levels=reasons)) %>% 
+  select(set, source, OriginalReason, name, rel, CIl, CIu) %>% 
+  print(., n=128) ->
+  df_creasons
+
+filter(df_creasons, OriginalReason %in% c("Error", 
+                                          "Investigation", 
+                                          "Plagiarism", 
+                                          "SelfPlagiarism")) %>%
+  ggplot(aes(source,rel)) + 
+  geom_point(aes(color=set), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=source, ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  theme(legend.position = 'top', 
+        axis.title.x = element_blank(), axis.text.y = element_blank(), 
+        axis.ticks.y.left = element_blank(),
+        axis.text.y.right = element_text(hjust=.55),
+        axis.title.y.right = element_blank(),
+        plot.margin = unit(c(0,1,0,0), 'mm'),
+        )  +
+  facet_grid(OriginalReason~name, switch='y') +
+    scale_y_continuous(
+      limits = c(-2, 82), 
+      breaks=c(0, 20, 40, 60, 80), 
+      labels=c("0%", "20%", "40%", "60%", "80%"), 
+      sec.axis = sec_axis(~., breaks=c(0, 20, 40, 60, 80), 
+                          labels=c("0%", "20%", "40%", "60%", "80%"))) ->
+    p_creasons1
+
+filter(df_creasons, OriginalReason %in% c("Misconduct", 
+                                          "PaperMill", 
+                                          "other")) %>%
+  ggplot(aes(source,rel)) + 
+  geom_point(aes(color=set), 
+             position=position_dodge(width=.7)) + 
+  geom_errorbar(aes(x=source, ymin=CIl, ymax=CIu, color=set), 
+                position=position_dodge(width=.7), width=.5) + 
+  labs(x='Relative Number of Mentions', 
+       y='Relative Number of Mentions') + 
+  scale_color_manual('Type of Article', 
+                     values = c("#2b83ba", "#ff8585")) +
+  scale_y_continuous(limits = c(-2, 82)) +
+  theme(legend.position = 'none', 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y.left = element_blank()) +
+  facet_grid(OriginalReason~name) ->
+  p_creasons2
+
+
+p_creasons1 + (p_creasons2 / plot_spacer() + 
+                 plot_layout(heights = c(33.5,10)))  + 
+  plot_annotation(
+    caption = 'Fig S18: Proportion of software mentions across different levels 
+    of citation completeness per retraction reason, separated by 
+    retracted and control articles. No Info: Neither the version, 
+    nor the developer of a software is provided; Incomplete Info: 
+    Either version or developer are provided; Informal Citation: 
+    Version and developer are provided; Formal citation: software 
+    mention is accompanied by bibliographic citation (independent 
+    from any associated information). Error bars indicate 95% CIs.') &
+  theme(plot.caption = element_text(size=14))
+```
+
+```{r}
+sessionInfo()
+```

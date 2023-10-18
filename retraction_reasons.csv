@@ -1,0 +1,106 @@
+Reason,TopReason
+Sabotage of Materials,other
+Updated to Correction,other
+Complaints about Company/Institution,other
+Breach of Policy by Third Party,other
+Misconduct by Company/Institution,Misconduct
+No Further Action,other
+Nonpayment of Fees/Refusal to Pay,other
+Complaints about Third Party,other
+Hoax Paper,PaperMill
+Miscommunication by Company/Institution,other
+Updated to Retraction,other
+Not Presented at Conference,other
+Miscommunication by Third Party,other
+Taken via Peer Review,other
+Contamination of Reagents,other
+Miscommunication by Journal/Publisher,other
+Salami Slicing,other
+Civil Proceedings,other
+Objections by Company/Institution,other
+Ethical Violations by Third Party,other
+Euphemisms for Misconduct,Misconduct
+Manipulation of Results,Misconduct
+Publishing Ban,other
+Error by Third Party,Error
+Misconduct by Third Party,Misconduct
+Contamination of Materials (General),other
+Criminal Proceedings,other
+Error in Cell Lines/Tissues,other
+Contamination of Cell Lines/Tissues,other
+Bias Issues or Lack of Balance,other
+Complaints about Author,other
+Legal Reasons/Legal Threats,other
+Miscommunication by Author,other
+Doing the Right Thing,other
+False Affiliation,other
+Falsification/Fabrication of Results,Misconduct
+Cites Retracted Work,other
+Concerns/Issues about Third Party Involvement,other
+Notice - Unable to Access via current resources,other
+Error in Materials (General),Error
+Informed/Patient Consent - None/Withdrawn,other
+Temporary Removal,other
+Unreliable Image,Error
+Lack of Approval from Company/Institution,other
+Conflict of Interest,other
+Lack of Approval from Third Party,other
+Plagiarism of Image,Plagiarism
+Taken from Dissertation/Thesis,other
+Plagiarism of Data,Plagiarism
+Investigation by ORI,Investigation
+Notice - Lack of,other
+Objections by Author(s),other
+Withdrawn (out of date),other
+Lack of Approval from Author,other
+Error by Journal/Publisher,Error
+Rogue Editor,other
+Lack of IRB/IACUC Approval,other
+Falsification/Fabrication of Image,Misconduct
+Duplication of Text,SelfPlagiarism
+Euphemisms for Duplication,SelfPlagiarism
+Copyright Claims,other
+Withdrawn to Publish in Different Journal,other
+Duplication of Data,SelfPlagiarism
+False/Forged Authorship,other
+Concerns/Issues about Referencing/Attributions,other
+Duplicate Publication through Error by Journal/Publisher,other
+Error in Image,Error
+Error in Text,Error
+Objections by Third Party,other
+Original Data not Provided,Error
+Ethical Violations by Author,other
+Randomly Generated Content,PaperMill
+Author Unresponsive,other
+Results Not Reproducible,Error
+Concerns/Issues About Image,Error
+Concerns/Issues About Authorship,other
+Concerns/Issues About Results,Error
+Unreliable Data,Error
+Retract and Replace,other
+Error in Methods,Error
+Manipulation of Images,Misconduct
+Paper Mill,PaperMill
+Upgrade/Update of Prior Notice,other
+Error in Analyses,Error
+Error in Results and/or Conclusions,Error
+Misconduct - Official Investigation/Finding,Misconduct
+Falsification/Fabrication of Data,Misconduct
+Error in Data,Error
+Fake Peer Review,other
+Misconduct by Author,Misconduct
+Investigation by Third Party,Investigation
+Notice - No/Limited Information,other
+Unreliable Results,Error
+Plagiarism of Article,Plagiarism
+Plagiarism of Text,Plagiarism
+Date of Retraction/Other Unknown,other
+Duplication of Image,SelfPlagiarism
+Euphemisms for Plagiarism,Plagiarism
+Concerns/Issues About Data,Error
+Investigation by Company/Institution,Investigation
+Breach of Policy by Author,other
+Duplication of Article,SelfPlagiarism
+Withdrawal,other
+Investigation by Journal/Publisher,Investigation
+Notice - Limited or No Information,other
